@@ -1,40 +1,41 @@
-# Terminal Dino Runner
+# T-Rex Run | 暴龙快跑
 
 Chrome 断网小恐龙的终端版。可以手动玩，也可以让规则 Agent 或 Claude LLM Agent 自动玩。
 
 ## 安装
 
-在项目目录中安装 `trex` 命令：
+在项目目录中安装到本地虚拟环境 `.venv`：
 
 ```bash
-python3 -m pip install .
+make install
 ```
 
-如果使用 Homebrew Python 并遇到 `externally-managed-environment`，可以改用虚拟环境：
+这会创建 `.venv`，并把命令安装到：
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install .
+```text
+.venv/bin/trex
 ```
 
 ## 启动
 
 ```bash
 # 人类手动玩
-trex
+make run
 
 # 规则 Agent 自动玩
-trex --agent
+make agent
 
 # Claude LLM Agent 自动玩
 export ANTHROPIC_API_KEY=sk-ant-...
-trex --llm
+make llm
 ```
 
-也可以不安装命令，直接运行源码文件：
+也可以直接使用底层命令：
 
 ```bash
+.venv/bin/trex
+.venv/bin/trex --agent
+.venv/bin/trex --llm
 python3 dino_game.py
 python3 dino_game.py --agent
 python3 dino_game.py --llm

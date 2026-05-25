@@ -4,15 +4,21 @@
 
 ## 开发环境
 
-建议使用虚拟环境，避免把开发依赖安装到系统 Python：
+默认使用项目内的 `.venv`，避免把包安装到 Homebrew Python 或系统 Python：
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -e .
+make dev-install
 ```
 
-安装后可以用 `trex`、`trex --agent`、`trex --llm` 验证命令入口。直接运行源码也仍然可用：
+安装后可以用 `make run`、`make agent`、`make llm` 启动，也可以直接运行虚拟环境里的命令：
+
+```bash
+.venv/bin/trex
+.venv/bin/trex --agent
+.venv/bin/trex --llm
+```
+
+直接运行源码也仍然可用：
 
 ```bash
 python3 dino_game.py
@@ -23,20 +29,33 @@ python3 dino_game.py
 当前测试使用 Python 标准库 `unittest`：
 
 ```bash
-python3 -m unittest tests/test_packaging.py
+make test
 ```
 
 语法检查：
 
 ```bash
-python3 -m py_compile dino_game.py
+make check
+```
+
+常用命令由 `Makefile` 管理：
+
+```bash
+make install      # 安装 trex 命令
+make dev-install  # editable 安装，适合开发
+make run          # .venv/bin/trex
+make agent        # .venv/bin/trex --agent
+make llm          # .venv/bin/trex --llm
+make test         # 运行 unittest
+make check        # 测试 + py_compile
+make clean        # 清理缓存和构建产物
 ```
 
 如果改动了命令入口或打包配置，需要确认：
 
 ```bash
 python3 -c "import importlib.metadata as m; print([ep.value for ep in m.entry_points(group='console_scripts') if ep.name == 'trex'])"
-command -v trex
+test -x .venv/bin/trex
 ```
 
 期望 `trex` 入口指向 `dino_game:cli`。
