@@ -32,8 +32,8 @@ class GameTuningTest(unittest.TestCase):
         airborne_seconds = airborne_frames / dino_game.FPS
         self.assertGreaterEqual(airborne_seconds, 0.45)
         self.assertLessEqual(airborne_seconds, 0.70)
-        self.assertGreaterEqual(max_height, 5.0)
-        self.assertLessEqual(max_height, 8.5)
+        self.assertGreaterEqual(max_height, 7.5)
+        self.assertLessEqual(max_height, 9.5)
 
     def test_initial_scroll_crosses_playfield_at_chrome_like_pace(self):
         dino_game = importlib.import_module("dino_game")
@@ -63,6 +63,26 @@ class GameTuningTest(unittest.TestCase):
 
         self.assertEqual(agent.decide(state), "none")
         state["obstacles"][0]["distance"] = 19.0
+        self.assertEqual(agent.decide(state), "jump")
+
+    def test_rule_agent_waits_for_late_jump_window_on_wide_short_cactus_groups(self):
+        dino_game = importlib.import_module("dino_game")
+        agent = dino_game.RuleAgent()
+        state = {
+            "dino_y": 0.0,
+            "jumping": False,
+            "speed": dino_game.INITIAL_SPEED,
+            "obstacles": [{
+                "kind": "cactus_group",
+                "distance": 30.0,
+                "height": 0,
+                "width": 15,
+                "h": 4,
+            }],
+        }
+
+        self.assertEqual(agent.decide(state), "none")
+        state["obstacles"][0]["distance"] = 17.0
         self.assertEqual(agent.decide(state), "jump")
 
 
@@ -97,6 +117,30 @@ class CollisionTest(unittest.TestCase):
         game.update()
 
         self.assertTrue(game.game_over)
+
+    def test_cactus_group_collides_with_each_plant(self):
+        dino_game = importlib.import_module("dino_game")
+        group = dino_game.Obstacle(
+            "cactus_group",
+            dino_game.DINO_COL + 4,
+            plants=("short", "tall"),
+        )
+        game = self.make_game_with_obstacle(group)
+
+        game.update()
+
+        self.assertTrue(game.game_over)
+
+    def test_cactus_group_uses_per_plant_hitboxes(self):
+        dino_game = importlib.import_module("dino_game")
+        group = dino_game.Obstacle(
+            "cactus_group",
+            dino_game.DINO_COL + 4,
+            plants=("short", "tall"),
+        )
+
+        self.assertEqual(len(group.hitboxes), 2)
+        self.assertLess(group.hitboxes[0][3], group.hitboxes[1][3])
 
     def test_cactus_does_not_collide_when_dino_is_high_enough(self):
         dino_game = importlib.import_module("dino_game")
@@ -217,6 +261,89 @@ class CollisionTest(unittest.TestCase):
         }
 
         self.assertEqual(agent.decide(state), "none")
+
+
+class CactusGenerationTest(unittest.TestCase):
+    def test_difficulty_increases_with_score(self):
+        dino_game = importlib.import_module("dino_game")
+
+        self.assertEqual(dino_game.difficulty_for_score(0), 0.0)
+        self.assertGreater(dino_game.difficulty_for_score(300), 0.0)
+        self.assertLess(dino_game.difficulty_for_score(300), 1.0)
+        self.assertEqual(dino_game.difficulty_for_score(600), 1.0)
+
+    def test_generated_cactus_group_has_one_to_four_plants(self):
+        dino_game = importlib.import_module("dino_game")
+
+        for _ in range(100):
+            group = dino_game.generate_cactus_group()
+            self.assertGreaterEqual(len(group), 1)
+            self.assertLessEqual(len(group), 4)
+
+    def test_generated_cactus_group_uses_short_and_tall_plants(self):
+        dino_game = importlib.import_module("dino_game")
+
+        for _ in range(100):
+            group = dino_game.generate_cactus_group()
+            self.assertTrue(set(group).issubset({"short", "tall"}))
+
+    def test_generated_cactus_group_never_has_four_tall_plants(self):
+        dino_game = importlib.import_module("dino_game")
+
+        for _ in range(1000):
+            self.assertNotEqual(
+                dino_game.generate_cactus_group(),
+                ("tall", "tall", "tall", "tall"),
+            )
+
+    def test_long_generated_cactus_groups_have_at_most_one_tall_plant(self):
+        dino_game = importlib.import_module("dino_game")
+
+        for _ in range(1000):
+            group = dino_game.generate_cactus_group()
+            if len(group) >= 3:
+                self.assertLessEqual(group.count("tall"), 1)
+
+    def test_low_difficulty_limits_cactus_groups_to_two_plants(self):
+        dino_game = importlib.import_module("dino_game")
+
+        for _ in range(1000):
+            self.assertLessEqual(len(dino_game.generate_cactus_group(0.0)), 2)
+
+    def test_medium_difficulty_limits_cactus_groups_to_three_plants(self):
+        dino_game = importlib.import_module("dino_game")
+
+        for _ in range(1000):
+            self.assertLessEqual(len(dino_game.generate_cactus_group(0.5)), 3)
+
+    def test_cactus_group_obstacle_uses_composed_art_width(self):
+        dino_game = importlib.import_module("dino_game")
+
+        obstacle = dino_game.Obstacle("cactus_group", 82, plants=("short", "tall"))
+
+        self.assertEqual(obstacle.kind, "cactus_group")
+        self.assertEqual(obstacle.plants, ("short", "tall"))
+        self.assertGreater(obstacle.width, dino_game.Obstacle("cactus_sm", 82).width)
+
+    def test_early_spawn_uses_random_cactus_group(self):
+        dino_game = importlib.import_module("dino_game")
+        game = dino_game.DinoGame()
+        game.score = 0
+
+        game._spawn_obstacle()
+
+        self.assertEqual(game.obstacles[0].kind, "cactus_group")
+        self.assertGreaterEqual(len(game.obstacles[0].plants), 1)
+        self.assertLessEqual(len(game.obstacles[0].plants), 4)
+
+    def test_early_spawn_does_not_create_long_cactus_group(self):
+        dino_game = importlib.import_module("dino_game")
+
+        for _ in range(100):
+            game = dino_game.DinoGame()
+            game.score = 0
+            game._spawn_obstacle()
+            self.assertLessEqual(len(game.obstacles[0].plants), 2)
 
 
 class ManualInputTest(unittest.TestCase):
