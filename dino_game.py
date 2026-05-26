@@ -207,7 +207,7 @@ class Obstacle:
         bottom = self.height
         if self.kind == "bird":
             if self.height == 0:
-                bottom = 2
+                bottom = 1
             elif self.height == 4:
                 bottom = 3
         top = bottom + self.h - 1

@@ -67,25 +67,95 @@ class GameTuningTest(unittest.TestCase):
 
 
 class CollisionTest(unittest.TestCase):
-    def test_low_bird_collides_with_standing_dino(self):
+    def make_game_with_obstacle(self, obstacle, *, dino_y=0.0, ducking=False):
         dino_game = importlib.import_module("dino_game")
         game = dino_game.DinoGame()
         game.spawn_timer = 9999
-        game.obstacles = [
-            dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=0)
-        ]
+        game.dino_y = dino_y
+        if ducking:
+            game.duck(True)
+        game.obstacles = [obstacle]
+        return game
+
+    def test_cactus_collides_with_standing_dino(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("cactus_lg", dino_game.DINO_COL + 4)
+        )
 
         game.update()
 
         self.assertTrue(game.game_over)
 
+    def test_cactus_collides_with_ducking_dino(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("cactus_lg", dino_game.DINO_COL + 4),
+            ducking=True,
+        )
+
+        game.update()
+
+        self.assertTrue(game.game_over)
+
+    def test_cactus_does_not_collide_when_dino_is_high_enough(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("cactus_lg", dino_game.DINO_COL + 4),
+            dino_y=7.0,
+        )
+
+        game.update()
+
+        self.assertFalse(game.game_over)
+
+    def test_obstacle_does_not_collide_without_horizontal_overlap(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("cactus_lg", dino_game.DINO_COL + 12)
+        )
+
+        game.update()
+
+        self.assertFalse(game.game_over)
+
+    def test_low_bird_collides_with_standing_dino(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=0)
+        )
+
+        game.update()
+
+        self.assertTrue(game.game_over)
+
+    def test_low_bird_collides_with_ducking_dino(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=0),
+            ducking=True,
+        )
+
+        game.update()
+
+        self.assertTrue(game.game_over)
+
+    def test_low_bird_does_not_collide_when_dino_is_high_enough(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=0),
+            dino_y=5.0,
+        )
+
+        game.update()
+
+        self.assertFalse(game.game_over)
+
     def test_mid_bird_collides_with_standing_dino_head(self):
         dino_game = importlib.import_module("dino_game")
-        game = dino_game.DinoGame()
-        game.spawn_timer = 9999
-        game.obstacles = [
+        game = self.make_game_with_obstacle(
             dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=4)
-        ]
+        )
 
         game.update()
 
@@ -93,12 +163,20 @@ class CollisionTest(unittest.TestCase):
 
     def test_mid_bird_does_not_collide_with_ducking_dino(self):
         dino_game = importlib.import_module("dino_game")
-        game = dino_game.DinoGame()
-        game.spawn_timer = 9999
-        game.duck(True)
-        game.obstacles = [
-            dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=4)
-        ]
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=4),
+            ducking=True,
+        )
+
+        game.update()
+
+        self.assertFalse(game.game_over)
+
+    def test_high_bird_does_not_collide_with_standing_dino(self):
+        dino_game = importlib.import_module("dino_game")
+        game = self.make_game_with_obstacle(
+            dino_game.Obstacle("bird", dino_game.DINO_COL + 4, height=8)
+        )
 
         game.update()
 
@@ -121,6 +199,24 @@ class CollisionTest(unittest.TestCase):
         }
 
         self.assertEqual(agent.decide(state), "duck")
+
+    def test_rule_agent_ignores_high_bird(self):
+        dino_game = importlib.import_module("dino_game")
+        agent = dino_game.RuleAgent()
+        state = {
+            "dino_y": 0.0,
+            "jumping": False,
+            "speed": dino_game.INITIAL_SPEED,
+            "obstacles": [{
+                "kind": "bird",
+                "distance": 19.0,
+                "height": 8,
+                "width": 4,
+                "h": 2,
+            }],
+        }
+
+        self.assertEqual(agent.decide(state), "none")
 
 
 class ManualInputTest(unittest.TestCase):
