@@ -45,24 +45,29 @@ import threading
 # 游戏常量 — 调这些数字可以改变游戏手感
 # ═══════════════════════════════════════════════════════════════════════
 
-FPS = 20                  # 帧率，决定游戏流畅度 (20帧 = 每帧50ms)
+FPS = 30                  # 帧率，决定游戏流畅度 (30帧 = 每帧33ms)
 FRAME_MS = 1000 // FPS    # 每帧毫秒数，传给 curses.timeout()
 
 GROUND_ROW = 18           # 地面在终端的第几行（从上往下数）
 DINO_COL = 8              # 恐龙固定在屏幕左侧第 8 列
 
-JUMP_VELOCITY = -2.2      # 起跳初速度（负值 = 向上）
-GRAVITY = 0.25            # 每帧施加的重力加速度
-                          # 跳跃轨迹: 约 18 帧完成一次完整跳跃
-                          # 最大高度: 约 10.8 个单位
+JUMP_VELOCITY = -1.45     # 起跳初速度（负值 = 向上）
+GRAVITY = 0.18            # 每帧施加的重力加速度
+                          # 跳跃轨迹: 约 17 帧完成一次完整跳跃
+                          # 最大高度: 约 6 个单位
 
-INITIAL_SPEED = 1.0       # 障碍物初始水平移动速度（像素/帧）
-MAX_SPEED = 3.5           # 速度上限，避免游戏变得不可能
-                          # 速度公式: speed = min(MAX_SPEED, 1.0 + score * 0.001)
+INITIAL_SPEED = 1.75      # 障碍物初始水平移动速度（终端列/帧）
+MAX_SPEED = 3.8           # 速度上限，约为初始速度的 2.17 倍
+SPEED_ACCELERATION = 0.0005
+                          # 速度公式: speed = min(MAX_SPEED, INITIAL_SPEED + score * SPEED_ACCELERATION)
 
-SPAWN_MIN = 25            # 连续障碍物之间的最小间距（像素）
-SPAWN_MAX = 50            # 连续障碍物之间的最大间距（像素）
-                          # 设为 25 保证恐龙跳完一次后有时间落地再跳
+SPAWN_MIN = 45            # 连续障碍物之间的最小间距（终端列）
+SPAWN_MAX = 90            # 连续障碍物之间的最大间距（终端列）
+                          # 按 30 FPS 的更快横向速度调大，留出落地窗口
+
+RUN_ANIM_FRAME_INTERVAL = max(1, round(FPS / 12))
+BIRD_ANIM_FRAME_INTERVAL = max(1, round(FPS / 8))
+SPEED_DROP_MULTIPLIER = 3.0
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -251,8 +256,8 @@ class DinoGame:
         if self.dino_y < 0.5:             # 在地面
             self.ducking = active
         if active and self.jumping and self.dino_vy < 0:
-            # 空中且仍在上升阶段 → 反转速度，快速下落
-            self.dino_vy = abs(self.dino_vy)
+            # 空中且仍在上升阶段 → 反转并放大速度，快速下落
+            self.dino_vy = max(abs(self.dino_vy) * SPEED_DROP_MULTIPLIER, 1.0)
 
     def get_state(self) -> dict:
         """导出当前游戏状态的结构化快照 — Agent 的「眼睛」
@@ -319,7 +324,7 @@ class DinoGame:
         self.frame += 1
         self.score += 1
         # 速度随分数线性增长，但有上限
-        self.speed = min(MAX_SPEED, INITIAL_SPEED + self.score * 0.001)
+        self.speed = min(MAX_SPEED, INITIAL_SPEED + self.score * SPEED_ACCELERATION)
 
         # ── 1. 恐龙物理 ──
         # 经典抛物线运动: y(t) = y0 + v0*t + 0.5*g*t^2
@@ -437,7 +442,7 @@ class RuleAgent:
         on_ground = state["dino_y"] < 0.5 and not state["jumping"]
 
         # 反应窗口边界
-        react_max = 7 + speed * 4   # 太远不跳（跳了白跳，落地后可能撞下一个）
+        react_max = 2 + speed * 10   # 约提前 10 帧起跳，避免高点过早错过障碍
         react_min = -2              # 太近了也别跳（已经来不及了）
 
         # 依次检查前方障碍物（已按距离排序）
@@ -671,7 +676,7 @@ class Renderer:
             art = DINO_DUCK
         elif game.jumping:
             art = DINO_JUMP
-        elif game.frame % 10 < 5:       # 每 10 帧切换一次跑步帧
+        elif (game.frame // RUN_ANIM_FRAME_INTERVAL) % 2 == 0:
             art = DINO_RUN_1
         else:
             art = DINO_RUN_2
@@ -686,8 +691,10 @@ class Renderer:
         for obs in game.obstacles:
             ox = int(obs.x)
             if obs.kind == "bird":
-                # 鸟每 8 帧切换拍翅动画
-                art = BIRD_1 if game.frame % 8 < 4 else BIRD_2
+                if (game.frame // BIRD_ANIM_FRAME_INTERVAL) % 2 == 0:
+                    art = BIRD_1
+                else:
+                    art = BIRD_2
             else:
                 art = obs.art
 
