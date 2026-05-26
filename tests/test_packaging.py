@@ -66,5 +66,23 @@ class GameTuningTest(unittest.TestCase):
         self.assertEqual(agent.decide(state), "jump")
 
 
+class ManualInputTest(unittest.TestCase):
+    def test_down_key_latches_ducking_across_empty_frames(self):
+        dino_game = importlib.import_module("dino_game")
+        input_state = dino_game.ManualInputState()
+
+        self.assertTrue(input_state.should_duck(dino_game.curses.KEY_DOWN))
+        self.assertTrue(input_state.should_duck(-1))
+        self.assertTrue(input_state.should_duck(-1))
+
+    def test_next_non_down_key_releases_ducking(self):
+        dino_game = importlib.import_module("dino_game")
+        input_state = dino_game.ManualInputState()
+
+        self.assertTrue(input_state.should_duck(dino_game.curses.KEY_DOWN))
+        self.assertFalse(input_state.should_duck(ord(" ")))
+        self.assertFalse(input_state.should_duck(-1))
+
+
 if __name__ == "__main__":
     unittest.main()

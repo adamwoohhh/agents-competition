@@ -579,6 +579,26 @@ height 表示障碍物的高度(鸟)，0=低空，4=中空，8=高空。
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# 手动输入状态
+# ═══════════════════════════════════════════════════════════════════════
+
+class ManualInputState:
+    """跟踪终端手动输入中需要跨帧保持的状态。"""
+
+    def __init__(self):
+        self.ducking = False
+
+    def should_duck(self, key: int) -> bool:
+        """方向下锁定蹲下；下一个其他输入解除蹲下。"""
+        if key == curses.KEY_DOWN:
+            self.ducking = True
+        elif key != -1:
+            self.ducking = False
+
+        return self.ducking
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 渲染器 — 把游戏状态画到终端
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -766,6 +786,7 @@ def main(stdscr):
     """
     game = DinoGame()
     renderer = Renderer(stdscr)
+    manual_input = ManualInputState()
 
     # 根据命令行参数选择 Agent 模式
     agent = None
@@ -825,10 +846,7 @@ def main(stdscr):
             # 人类模式: 直接响应键盘
             if key == ord(' ') or key == curses.KEY_UP:
                 game.jump()
-            if key == curses.KEY_DOWN:
-                game.duck(True)
-            else:
-                game.duck(False)
+            game.duck(manual_input.should_duck(key))
 
         # ── 更新 & 渲染 ──
         game.update()
