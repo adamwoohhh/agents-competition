@@ -43,6 +43,21 @@ class PackagingTest(unittest.TestCase):
         self.assertIn("publish-test: check-dist", makefile)
         self.assertIn("publish: check-dist", makefile)
 
+    def test_dev_extra_declares_packaging_tools(self):
+        pyproject = self.load_pyproject()
+
+        dev_dependencies = pyproject["project"]["optional-dependencies"]["dev"]
+        self.assertTrue(any(dep.startswith("build>=") for dep in dev_dependencies))
+        self.assertTrue(any(dep.startswith("twine>=") for dep in dev_dependencies))
+
+    def test_developer_setup_installs_dev_extra(self):
+        makefile = (self.project_root() / "Makefile").read_text()
+        contributing = (self.project_root() / "CONTRIBUTING.md").read_text()
+
+        self.assertIn('dev-install: venv\n\t$(PIP) install -e ".[dev]"', makefile)
+        self.assertIn('python3 -m pip install -e ".[dev]"', contributing)
+        self.assertNotIn("python3 -m pip install build twine", contributing)
+
 
 class GameTuningTest(unittest.TestCase):
     def test_jump_arc_returns_to_ground_in_chrome_like_window(self):

@@ -10,7 +10,7 @@
 make dev-install
 ```
 
-安装后可以用 `make run`、`make agent`、`make llm` 启动，也可以直接运行虚拟环境里的命令：
+这会以 editable 模式安装项目和 `.[dev]` 维护者工具。安装后可以用 `make run`、`make agent`、`make llm` 启动，也可以直接运行虚拟环境里的命令：
 
 ```bash
 .venv/bin/dino
@@ -42,7 +42,7 @@ make check
 
 ```bash
 make install      # 安装 dino 命令
-make dev-install  # editable 安装，适合开发
+make dev-install  # editable 安装项目和 .[dev] 工具
 make run          # .venv/bin/dino
 make agent        # .venv/bin/dino --agent
 make llm          # .venv/bin/dino --llm
@@ -67,10 +67,10 @@ test -x .venv/bin/dino
 
 PyPI 包名是 `ai-dino-in-terminal`，安装后暴露的命令是 `dino`。
 
-构建发布包需要本地安装维护者工具：
+构建发布包需要本地安装维护者工具。推荐用项目的 `dev` extra 安装：
 
 ```bash
-python3 -m pip install build twine
+python3 -m pip install -e ".[dev]"
 ```
 
 构建 wheel 和 source distribution：

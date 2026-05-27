@@ -13,7 +13,7 @@ install: venv
 	$(PIP) install .
 
 dev-install: venv
-	$(PIP) install -e .
+	$(PIP) install -e ".[dev]"
 
 test: venv
 	env PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest tests/test_packaging.py

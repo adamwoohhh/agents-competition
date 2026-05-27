@@ -29,6 +29,12 @@ Homepage = "https://github.com/bytedance/agents-competition"
 Repository = "https://github.com/bytedance/agents-competition"
 Issues = "https://github.com/bytedance/agents-competition/issues"
 
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "twine>=6.0",
+]
+
 [project.scripts]
 dino = "dino_game:cli"
 
