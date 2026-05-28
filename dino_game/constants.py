@@ -1,5 +1,9 @@
 """Shared constants for the terminal dino game."""
 
+import json
+import math
+import os
+
 FPS = 30                  # 帧率，决定游戏流畅度 (30帧 = 每帧33ms)
 
 FRAME_MS = 1000 // FPS    # 每帧毫秒数，传给 curses.timeout()
@@ -8,13 +12,49 @@ GROUND_ROW = 18           # 地面在终端的第几行（从上往下数）
 
 DINO_COL = 8              # 恐龙固定在屏幕左侧第 8 列
 
-NORMAL_OBSTACLE_SPAWN_X = 82
+CONFIG_DIR_NAME = "ai-dino-in-terminal"
 
-LLM_FORECAST_MAX_X = 1250
+CONFIG_FILE_NAME = "config.json"
 
-NORMAL_STATE_LOOKAHEAD = NORMAL_OBSTACLE_SPAWN_X - DINO_COL + 10
+DEFAULT_LLM_ACTION_WINDOW_FRAMES = 600
 
-LLM_STATE_LOOKAHEAD = LLM_FORECAST_MAX_X - DINO_COL + 10
+
+def _positive_int(value, default: int) -> int:
+    try:
+        if isinstance(value, bool):
+            return default
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _config_file_path(home: str | None = None) -> str:
+    home_dir = home if home is not None else os.path.expanduser("~")
+    return os.path.join(home_dir, ".config", CONFIG_DIR_NAME, CONFIG_FILE_NAME)
+
+
+def _configured_llm_action_window_default(default: int) -> int:
+    try:
+        with open(_config_file_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return default
+    if not isinstance(data, dict):
+        return default
+    return _positive_int(data.get("llm_window_frames"), default)
+
+
+def _positive_int_from_env(name: str, default: int) -> int:
+    return _positive_int(os.environ.get(name), default)
+
+
+LLM_ACTION_WINDOW_FRAMES = _positive_int_from_env(
+    "LLM_FEAME_WINDOW",
+    _configured_llm_action_window_default(DEFAULT_LLM_ACTION_WINDOW_FRAMES),
+)
+
+LLM_ACTION_WINDOW_SECONDS = LLM_ACTION_WINDOW_FRAMES / FPS
 
 JUMP_VELOCITY = -1.75     # 起跳初速度（负值 = 向上）
 
@@ -23,6 +63,17 @@ GRAVITY = 0.22            # 每帧施加的重力加速度
 INITIAL_SPEED = 1.75      # 障碍物初始水平移动速度（终端列/帧）
 
 MAX_SPEED = 3.8           # 速度上限，约为初始速度的 2.17 倍
+
+NORMAL_OBSTACLE_SPAWN_X = 82
+
+LLM_FORECAST_MAX_X = max(
+    1250,
+    math.ceil(MAX_SPEED * LLM_ACTION_WINDOW_FRAMES + DINO_COL - 10),
+)
+
+NORMAL_STATE_LOOKAHEAD = NORMAL_OBSTACLE_SPAWN_X - DINO_COL + 10
+
+LLM_STATE_LOOKAHEAD = LLM_FORECAST_MAX_X - DINO_COL + 10
 
 SPEED_ACCELERATION = 0.0005
 
@@ -45,10 +96,6 @@ REPLAY_DIR = "replays"
 VERSION = "0.1.0"
 
 PAUSE_COUNTDOWN_SECONDS = 3
-
-LLM_ACTION_WINDOW_SECONDS = 10
-
-LLM_ACTION_WINDOW_FRAMES = FPS * LLM_ACTION_WINDOW_SECONDS
 
 LLM_PREFETCH_THRESHOLD_FRAMES = LLM_ACTION_WINDOW_FRAMES
 
@@ -73,10 +120,6 @@ ACTION_SYMBOLS = {
     "jump": "↑",
     "duck": "↓",
 }
-
-CONFIG_DIR_NAME = "ai-dino-in-terminal"
-
-CONFIG_FILE_NAME = "config.json"
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 

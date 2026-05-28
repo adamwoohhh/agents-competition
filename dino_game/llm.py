@@ -7,6 +7,7 @@ import threading
 from dataclasses import dataclass
 
 from .constants import *
+from .constants import _positive_int
 from .engine import DinoGame, obstacle_debug_snapshot
 from .llm_client import LLMClient
 
@@ -17,6 +18,7 @@ class LLMConfig:
     api_key: str = ""
     base_url: str = DEFAULT_OPENAI_BASE_URL
     model: str = DEFAULT_OPENAI_MODEL
+    llm_window_frames: int = DEFAULT_LLM_ACTION_WINDOW_FRAMES
 
     def is_complete(self) -> bool:
         return bool(self.api_key and self.base_url and self.model)
@@ -51,6 +53,10 @@ def load_llm_config(path: str | os.PathLike | None = None) -> LLMConfig:
         api_key=str(data.get("api_key") or ""),
         base_url=str(data.get("base_url") or DEFAULT_OPENAI_BASE_URL),
         model=str(data.get("model") or DEFAULT_OPENAI_MODEL),
+        llm_window_frames=_positive_int(
+            data.get("llm_window_frames"),
+            DEFAULT_LLM_ACTION_WINDOW_FRAMES,
+        ),
     )
 
 def save_llm_config(config: LLMConfig, path: str | os.PathLike | None = None):
@@ -61,6 +67,10 @@ def save_llm_config(config: LLMConfig, path: str | os.PathLike | None = None):
         "api_key": config.api_key,
         "base_url": config.base_url,
         "model": config.model,
+        "llm_window_frames": _positive_int(
+            config.llm_window_frames,
+            DEFAULT_LLM_ACTION_WINDOW_FRAMES,
+        ),
     }
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -86,19 +96,54 @@ def mask_api_key(api_key: str) -> str:
 def render_llm_config(config: LLMConfig, path: str | os.PathLike | None = None) -> str:
     """Render config for CLI display without leaking the full API key."""
     config_path = os.fspath(path or config_file_path())
+    llm_window_frames = _positive_int(
+        config.llm_window_frames,
+        DEFAULT_LLM_ACTION_WINDOW_FRAMES,
+    )
     return "\n".join([
         f"path: {config_path}",
         f"api_key: {mask_api_key(config.api_key)}",
         f"base_url: {config.base_url or '(not set)'}",
         f"model: {config.model or '(not set)'}",
+        f"llm_window_frames: {llm_window_frames}",
     ])
+
+def prompt_for_positive_int(
+        prompt: str,
+        default: int,
+        *,
+        input_func=input,
+        output_func=print) -> int:
+    """Prompt until the user provides a positive integer or accepts the default."""
+    while True:
+        answer = input_func(prompt).strip()
+        if not answer:
+            return default
+        value = _positive_int(answer, 0)
+        if value > 0:
+            return value
+        output_func("Value must be a positive integer.")
+
+def prompt_for_required_text(
+        prompt: str,
+        label: str,
+        *,
+        input_func=input,
+        output_func=print) -> str:
+    """Prompt until the user provides non-empty text."""
+    while True:
+        value = input_func(prompt).strip()
+        if value:
+            return value
+        output_func(f"{label} is required.")
 
 def prompt_for_llm_config(
         existing: LLMConfig | None = None,
         *,
         input_func=input,
         output_func=print,
-        ask_persist: bool = False) -> tuple[LLMConfig, bool]:
+        ask_persist: bool = False,
+        require_endpoint_values: bool = False) -> tuple[LLMConfig, bool]:
     """Prompt for LLM settings and optionally ask whether to persist them."""
     existing = existing or LLMConfig()
     output_func("Configure OpenAI-compatible LLM settings.")
@@ -108,18 +153,51 @@ def prompt_for_llm_config(
         output_func("API key is required.")
         api_key = input_func("API key: ").strip()
 
-    base_prompt = f"Base URL [{existing.base_url or DEFAULT_OPENAI_BASE_URL}]: "
-    base_url = input_func(base_prompt).strip() or existing.base_url or DEFAULT_OPENAI_BASE_URL
+    if require_endpoint_values:
+        base_url = prompt_for_required_text(
+            "Base URL: ",
+            "Base URL",
+            input_func=input_func,
+            output_func=output_func,
+        )
+    else:
+        base_prompt = f"Base URL [{existing.base_url or DEFAULT_OPENAI_BASE_URL}]: "
+        base_url = input_func(base_prompt).strip() or existing.base_url or DEFAULT_OPENAI_BASE_URL
 
-    model_prompt = f"Model [{existing.model or DEFAULT_OPENAI_MODEL}]: "
-    model = input_func(model_prompt).strip() or existing.model or DEFAULT_OPENAI_MODEL
+    if require_endpoint_values:
+        model = prompt_for_required_text(
+            "Model: ",
+            "Model",
+            input_func=input_func,
+            output_func=output_func,
+        )
+    else:
+        model_prompt = f"Model [{existing.model or DEFAULT_OPENAI_MODEL}]: "
+        model = input_func(model_prompt).strip() or existing.model or DEFAULT_OPENAI_MODEL
+
+    existing_window = _positive_int(
+        existing.llm_window_frames,
+        DEFAULT_LLM_ACTION_WINDOW_FRAMES,
+    )
+    window_prompt = f"LLM window frames [{existing_window}]: "
+    llm_window_frames = prompt_for_positive_int(
+        window_prompt,
+        existing_window,
+        input_func=input_func,
+        output_func=output_func,
+    )
 
     persist = False
     if ask_persist:
         answer = input_func("Save config to local file? [y/N]: ").strip().lower()
         persist = answer in {"y", "yes"}
 
-    return LLMConfig(api_key=api_key, base_url=base_url, model=model), persist
+    return LLMConfig(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        llm_window_frames=llm_window_frames,
+    ), persist
 
 def run_config_setup(
         *,
@@ -134,6 +212,7 @@ def run_config_setup(
         input_func=input_func,
         output_func=output_func,
         ask_persist=False,
+        require_endpoint_values=True,
     )
     save_llm_config(config, path)
     output_func(f"Saved config to {path}")
@@ -146,6 +225,13 @@ def resolve_llm_config_for_run(
         output_func=print) -> LLMConfig:
     """Load config for `dino play --llm`, prompting if required values are absent."""
     path = config_path or config_file_path()
+    if not os.path.exists(path):
+        return run_config_setup(
+            config_path=path,
+            input_func=input_func,
+            output_func=output_func,
+        )
+
     config = load_llm_config(path)
     if config.is_complete():
         return config

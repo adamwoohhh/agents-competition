@@ -28,6 +28,7 @@ class LLMConfigTest(unittest.TestCase):
                 api_key="sk-abcdefghijklmnopqrstuvwxyz",
                 base_url="https://example.test/v1",
                 model="gpt-test",
+                llm_window_frames=720,
             )
 
             dino_game.save_llm_config(config, config_path)
@@ -35,12 +36,14 @@ class LLMConfigTest(unittest.TestCase):
             self.assertEqual(dino_game.load_llm_config(config_path), config)
             stored = json.loads(config_path.read_text())
             self.assertEqual(stored["api_key"], "sk-abcdefghijklmnopqrstuvwxyz")
+            self.assertEqual(stored["llm_window_frames"], 720)
 
             rendered = dino_game.render_llm_config(config)
             self.assertIn("api_key: sk-a...wxyz", rendered)
             self.assertNotIn("abcdefghijklmnopqrstuvwxyz", rendered)
             self.assertIn("base_url: https://example.test/v1", rendered)
             self.assertIn("model: gpt-test", rendered)
+            self.assertIn("llm_window_frames: 720", rendered)
 
             self.assertTrue(dino_game.reset_llm_config(config_path))
             self.assertFalse(config_path.exists())
@@ -48,7 +51,7 @@ class LLMConfigTest(unittest.TestCase):
 
     def test_prompt_for_llm_config_defaults_and_optional_persistence(self):
         dino_game = self.dino_game()
-        answers = iter(["sk-test", "", "", ""])
+        answers = iter(["sk-test", "", "", "", ""])
         messages = []
 
         config, persist = dino_game.prompt_for_llm_config(
@@ -60,11 +63,12 @@ class LLMConfigTest(unittest.TestCase):
         self.assertEqual(config.api_key, "sk-test")
         self.assertEqual(config.base_url, dino_game.DEFAULT_OPENAI_BASE_URL)
         self.assertEqual(config.model, dino_game.DEFAULT_OPENAI_MODEL)
+        self.assertEqual(config.llm_window_frames, dino_game.DEFAULT_LLM_ACTION_WINDOW_FRAMES)
         self.assertFalse(persist)
 
     def test_setup_flow_writes_without_asking_for_persistence(self):
         dino_game = self.dino_game()
-        answers = iter(["sk-test", "https://example.test/v1", "gpt-test"])
+        answers = iter(["sk-test", "", "https://example.test/v1", "", "gpt-test", "720"])
         messages = []
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = pathlib.Path(temp_dir) / "config.json"
@@ -76,33 +80,47 @@ class LLMConfigTest(unittest.TestCase):
             )
 
             self.assertEqual(config.model, "gpt-test")
+            self.assertEqual(config.base_url, "https://example.test/v1")
+            self.assertEqual(config.llm_window_frames, 720)
             self.assertEqual(dino_game.load_llm_config(config_path), config)
+            self.assertTrue(any("Base URL is required." in message for message in messages))
+            self.assertTrue(any("Model is required." in message for message in messages))
             self.assertTrue(any("Saved config" in message for message in messages))
 
-    def test_resolve_llm_config_prompts_and_only_persists_on_yes(self):
+    def test_prompt_for_llm_config_reprompts_invalid_window_frames(self):
+        dino_game = self.dino_game()
+        answers = iter(["sk-test", "", "", "abc", "0", "180"])
+        messages = []
+
+        config, _ = dino_game.prompt_for_llm_config(
+            input_func=lambda prompt: next(answers),
+            output_func=messages.append,
+        )
+
+        self.assertEqual(config.llm_window_frames, 180)
+        self.assertTrue(any("positive integer" in message for message in messages))
+
+    def test_resolve_llm_config_without_file_uses_setup_flow_and_persists(self):
         dino_game = self.dino_game()
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = pathlib.Path(temp_dir) / "config.json"
-            answers = iter(["sk-session", "", "", "n"])
+            answers = iter(["sk-session", "", "https://example.test/v1", "", "gpt-test", "720"])
+            messages = []
 
             config = dino_game.resolve_llm_config_for_run(
                 config_path=config_path,
                 input_func=lambda prompt: next(answers),
-                output_func=lambda message: None,
+                output_func=messages.append,
             )
 
             self.assertEqual(config.api_key, "sk-session")
-            self.assertFalse(config_path.exists())
-
-            answers = iter(["sk-save", "", "", "y"])
-            config = dino_game.resolve_llm_config_for_run(
-                config_path=config_path,
-                input_func=lambda prompt: next(answers),
-                output_func=lambda message: None,
-            )
-
-            self.assertEqual(config.api_key, "sk-save")
+            self.assertEqual(config.base_url, "https://example.test/v1")
+            self.assertEqual(config.model, "gpt-test")
+            self.assertEqual(config.llm_window_frames, 720)
             self.assertEqual(dino_game.load_llm_config(config_path), config)
+            self.assertTrue(any("Base URL is required." in message for message in messages))
+            self.assertTrue(any("Model is required." in message for message in messages))
+            self.assertTrue(any("Saved config" in message for message in messages))
 
 
 class LLMAgentOpenAITest(unittest.TestCase):
@@ -212,12 +230,12 @@ class LLMAgentOpenAITest(unittest.TestCase):
         }, frame=5), "jump")
         self.assertTrue(agent.needs_loading(5))
 
-    def test_llm_action_window_covers_ten_seconds(self):
+    def test_llm_action_window_uses_default_frame_window(self):
         dino_game = self.dino_game()
 
         self.assertEqual(
             dino_game.LLM_ACTION_WINDOW_FRAMES,
-            dino_game.FPS * 10,
+            600,
         )
 
     def test_llm_agent_skips_api_when_window_state_has_no_obstacles(self):

@@ -28,6 +28,8 @@ class CliContractTest(unittest.TestCase):
         self.assertIn("Config", help_text)
         self.assertIn("config", help_text)
         self.assertIn("View or update LLM configuration", help_text)
+        self.assertIn("setup", help_text)
+        self.assertIn("Interactively configure config.json", help_text)
         self.assertIn("Help", help_text)
         self.assertIn("help", help_text)
         self.assertIn("--help, -H", help_text)
@@ -48,6 +50,7 @@ class CliContractTest(unittest.TestCase):
         replay_help = dino_game.render_command_help("replay")
         compete_help = dino_game.render_command_help("compete")
         config_help = dino_game.render_command_help("config")
+        setup_help = dino_game.render_command_help("setup")
 
         self.assertIn("Usage: dino play [--auto|--llm] [--debug]", play_help)
         self.assertIn("--auto", play_help)
@@ -63,7 +66,12 @@ class CliContractTest(unittest.TestCase):
         self.assertIn("Usage: dino config", config_help)
         self.assertIn("+setup", config_help)
         self.assertIn("+reset", config_help)
-        self.assertNotRegex(play_help + replay_help + compete_help + config_help, r"[\u4e00-\u9fff]")
+        self.assertIn("Usage: dino setup", setup_help)
+        self.assertIn("llm_window_frames", setup_help)
+        self.assertNotRegex(
+            play_help + replay_help + compete_help + config_help + setup_help,
+            r"[\u4e00-\u9fff]",
+        )
 
     def test_parse_cli_args_uses_new_subcommands_only(self):
         dino_game = self.dino_game()
@@ -85,6 +93,9 @@ class CliContractTest(unittest.TestCase):
         self.assertEqual(dino_game.parse_cli_args(["config"]).config_action, "show")
         self.assertEqual(dino_game.parse_cli_args(["config", "+setup"]).config_action, "setup")
         self.assertEqual(dino_game.parse_cli_args(["config", "+reset"]).config_action, "reset")
+        self.assertEqual(dino_game.parse_cli_args(["setup"]).command, "setup")
+        self.assertEqual(dino_game.parse_cli_args(["setup"]).config_action, "setup")
+        self.assertTrue(dino_game.parse_cli_args(["setup", "extra"]).show_help)
         self.assertTrue(dino_game.parse_cli_args(["config", "+unknown"]).show_help)
         self.assertTrue(dino_game.parse_cli_args(["play", "--record", "run.json"]).show_help)
         self.assertTrue(dino_game.parse_cli_args(["compete", "--record", "run.json"]).show_help)
@@ -99,6 +110,7 @@ class CliContractTest(unittest.TestCase):
         self.assertEqual(dino_game.parse_cli_args(["help"]).help_text, dino_game.render_main_help())
         self.assertEqual(dino_game.parse_cli_args(["play", "-H"]).help_text, dino_game.render_command_help("play"))
         self.assertEqual(dino_game.parse_cli_args(["config", "-H"]).help_text, dino_game.render_command_help("config"))
+        self.assertEqual(dino_game.parse_cli_args(["setup", "-H"]).help_text, dino_game.render_command_help("setup"))
         self.assertEqual(dino_game.parse_cli_args(["foo"]).help_text, dino_game.render_main_help())
 
     def test_version_flags_return_project_version(self):

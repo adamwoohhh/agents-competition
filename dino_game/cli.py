@@ -45,6 +45,7 @@ COMMAND_GROUPS = [
         ("compete", "Start competition mode from a replay"),
     ]),
     ("Config", [
+        ("setup", "Interactively configure config.json"),
         ("config", "View or update LLM configuration"),
     ]),
     ("Help", [
@@ -127,6 +128,12 @@ def render_command_help(command: str) -> str:
             "  dino config",
             "  dino config +setup",
             "  dino config +reset",
+        ]
+    elif command == "setup":
+        usage = "dino setup"
+        options = [
+            "  Prompts for api_key, base_url, model, and llm_window_frames",
+            "  Writes the answers to config.json",
         ]
     elif command == "help":
         usage = "dino help [command]"
@@ -235,6 +242,11 @@ def parse_cli_args(args: list[str]) -> CliArgs:
             return CliArgs(command=command, config_action="reset")
         return CliArgs(command=command, show_help=True, help_text=render_command_help(command))
 
+    if command == "setup":
+        if command_args:
+            return CliArgs(command=command, show_help=True, help_text=render_command_help(command))
+        return CliArgs(command=command, config_action="setup")
+
     return CliArgs(show_help=True, help_text=render_main_help())
 
 def game_mode_from_args(args: list[str]) -> str:
@@ -258,7 +270,7 @@ def cli():
     if cli_args.show_help:
         print(cli_args.help_text)
         return
-    if cli_args.command == "config":
+    if cli_args.command in {"config", "setup"}:
         if cli_args.config_action == "setup":
             run_config_setup()
             return
