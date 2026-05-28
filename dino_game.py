@@ -347,6 +347,20 @@ def random_obstacle_for_score(score: int, x: float, rng=random) -> Obstacle:
     )
 
 
+def obstacle_debug_snapshot(obstacle: Obstacle) -> dict:
+    """Return a JSON-friendly obstacle snapshot for diagnostics."""
+    data = {
+        "kind": obstacle.kind,
+        "x": round(obstacle.x, 2),
+        "height": obstacle.height,
+        "width": obstacle.width,
+        "h": obstacle.h,
+    }
+    if obstacle.kind == "cactus_group":
+        data["plants"] = list(obstacle.plants or ())
+    return data
+
+
 class DinoGame:
     """游戏引擎 — 管理所有游戏状态和物理模拟
 
@@ -376,6 +390,7 @@ class DinoGame:
         self.high_score = 0     # 历史最高分（跨局保持）
         self.speed = INITIAL_SPEED
         self.game_over = False
+        self.last_collision: dict | None = None
         self.frame = 0          # 帧计数器（用于动画切换）
         self.spawn_timer = self.rng.randint(SPAWN_MIN, SPAWN_MAX)
         self.ground_offset = 0  # 地面纹理滚动偏移（视觉效果）
@@ -441,7 +456,7 @@ class DinoGame:
                     "h": obs.h,
                 }
                 if hasattr(obs, "forecast_frame"):
-                    item["frame"] = obs.forecast_frame
+                    item["spawn_frame"] = obs.forecast_frame
                     item["forecast"] = True
                 nearest.append(item)
                 if max_obstacle_count is not None and len(nearest) >= max_obstacle_count:
@@ -523,6 +538,7 @@ class DinoGame:
         if self.game_over:
             return []
 
+        self.last_collision = None
         spawned_obstacles: list[Obstacle] = []
 
         self.frame += 1
@@ -588,6 +604,22 @@ class DinoGame:
                 # 额外 ±1 容差让碰撞更宽容
                 if (dino_right > ol + 1 and dino_left < oright - 1 and
                         dino_top > ob + 1 and dino_bottom < ot - 1):
+                    self.last_collision = {
+                        "frame": self.frame,
+                        "dino_hitbox": [
+                            round(dino_left, 2),
+                            round(dino_right, 2),
+                            round(dino_bottom, 2),
+                            round(dino_top, 2),
+                        ],
+                        "obstacle": obstacle_debug_snapshot(obs),
+                        "obstacle_hitbox": [
+                            round(ol, 2),
+                            round(oright, 2),
+                            round(ob, 2),
+                            round(ot, 2),
+                        ],
+                    }
                     self.game_over = True
                     self.high_score = max(self.high_score, self.score)
                     break
@@ -952,6 +984,57 @@ def estimate_horizontal_clearance_frames(width: float, speed: float) -> int:
     return math.ceil(trailing_width / max(speed, 0.1))
 
 
+def obstacle_timing_estimate(
+        obstacle: dict,
+        speed: float,
+        current_frame: int) -> dict:
+    """Estimate overlap and clearance frames for one obstacle snapshot."""
+    distance = float(obstacle.get("distance", 0.0))
+    frames_until_overlap = estimate_frames_until_horizontal_overlap(distance, speed)
+    overlap_frame = current_frame + frames_until_overlap
+    overlap_speed = min(
+        MAX_SPEED,
+        speed + SPEED_ACCELERATION * frames_until_overlap,
+    )
+    raw_width = obstacle.get("width", 1.0)
+    try:
+        width = max(1.0, float(raw_width))
+        width_text = f", width={width:g}"
+    except (TypeError, ValueError):
+        width = 1.0
+        width_text = ""
+    clearance_frames = estimate_horizontal_clearance_frames(width, overlap_speed)
+    return {
+        "distance": distance,
+        "width": width,
+        "width_text": width_text,
+        "overlap_frame": overlap_frame,
+        "clear_frame": overlap_frame + clearance_frames,
+        "clearance_frames": clearance_frames,
+    }
+
+
+def llm_request_state_for_start_frame(
+        state: dict,
+        *,
+        current_frame: int,
+        start_frame: int) -> dict:
+    """Drop obstacles that clear before the requested action window starts."""
+    speed = float(state.get("speed", INITIAL_SPEED))
+    filtered_obstacles = [
+        obstacle
+        for obstacle in (state.get("obstacles") or [])
+        if obstacle_timing_estimate(
+            obstacle,
+            speed,
+            current_frame,
+        )["clear_frame"] >= start_frame
+    ]
+    request_state = dict(state)
+    request_state["obstacles"] = filtered_obstacles
+    return request_state
+
+
 def llm_planning_guidance(state: dict, current_frame: int) -> str:
     """Build prompt guidance from local physics and obstacle timing estimates."""
     jump_frames, max_jump_height = jump_physics_summary()
@@ -973,12 +1056,16 @@ def llm_planning_guidance(state: dict, current_frame: int) -> str:
         ),
         (
             "- 宽障碍物会让水平重叠持续到 estimated_clear_frame；"
-            "recommended_jump_start 会随 width 变大而后移，避免过早下落。"
+            "recommended_jump_window 会随 width 变大而后移，避免过早下落。"
         ),
         (
             "- 地面障碍或低空鸟不要过早起跳；推荐窗口大致覆盖 "
             f"estimated_clear_frame 前 {LLM_RECOMMENDED_JUMP_EARLY_FRAMES} 帧"
             f"到 estimated_overlap_frame 前 {LLM_RECOMMENDED_JUMP_LATE_FRAMES} 帧。"
+        ),
+        (
+            "- 不要早于 recommended_jump_window 的起点起跳；"
+            "优先选择 optimal_jump_frame。"
         ),
         "- 中空鸟 height=4 优先 duck；高空鸟 height=8 通常 none。",
         "推荐起跳窗口估算:",
@@ -990,22 +1077,11 @@ def llm_planning_guidance(state: dict, current_frame: int) -> str:
         return "\n".join(lines)
 
     for index, obstacle in enumerate(obstacles, start=1):
-        distance = float(obstacle.get("distance", 0.0))
-        frames_until_overlap = estimate_frames_until_horizontal_overlap(distance, speed)
-        overlap_frame = current_frame + frames_until_overlap
-        overlap_speed = min(
-            MAX_SPEED,
-            speed + SPEED_ACCELERATION * frames_until_overlap,
-        )
-        raw_width = obstacle.get("width", 1.0)
-        try:
-            width = max(1.0, float(raw_width))
-            width_text = f", width={width:g}"
-        except (TypeError, ValueError):
-            width = 1.0
-            width_text = ""
-        clearance_frames = estimate_horizontal_clearance_frames(width, overlap_speed)
-        clear_frame = overlap_frame + clearance_frames
+        timing = obstacle_timing_estimate(obstacle, speed, current_frame)
+        distance = timing["distance"]
+        overlap_frame = timing["overlap_frame"]
+        clear_frame = timing["clear_frame"]
+        clearance_frames = timing["clearance_frames"]
         kind = obstacle.get("kind", "unknown")
         height = obstacle.get("height", 0)
         if kind == "bird" and height == 4:
@@ -1024,12 +1100,15 @@ def llm_planning_guidance(state: dict, current_frame: int) -> str:
             jump_end = overlap_frame - LLM_RECOMMENDED_JUMP_LATE_FRAMES
             if jump_start > jump_end:
                 jump_start = jump_end
+            optimal_jump_frame = (jump_start + jump_end) // 2
             recommendation = (
                 f"estimated_clear_frame={clear_frame}, "
-                f"recommended_jump_start={jump_start}-{jump_end}"
+                f"recommended_jump_window={jump_start}-{jump_end}, "
+                f"optimal_jump_frame={optimal_jump_frame}"
             )
         lines.append(
-            f"- obstacle#{index}: kind={kind}, distance={distance:g}{width_text}, "
+            f"- obstacle#{index}: kind={kind}, "
+            f"distance={distance:g}{timing['width_text']}, "
             f"estimated_overlap_frame={overlap_frame}, {recommendation}"
         )
     return "\n".join(lines)
@@ -1103,6 +1182,11 @@ class LLMAgent:
         try:
             import urllib.request
 
+            state = llm_request_state_for_start_frame(
+                state,
+                current_frame=current_frame,
+                start_frame=start_frame,
+            )
             planning_guidance = llm_planning_guidance(state, current_frame)
             prompt = f"""你正在玩一个恐龙跑酷游戏。请根据当前状态规划未来 {window_frames} actions。
 
@@ -1290,6 +1374,33 @@ def cached_frames_text_for_agent(agent) -> str | None:
     if isinstance(agent, LLMAgent):
         return agent.cached_frame_summary()
     return None
+
+
+def debug_log_llm_game_over(
+        agent,
+        game: DinoGame,
+        *,
+        frame: int,
+        action: str):
+    """Write a game-over diagnostic event to the LLM debug log."""
+    if not isinstance(agent, LLMAgent):
+        return
+    agent._debug_log(
+        "game_over",
+        frame=frame,
+        action=action,
+        score=game.score,
+        dino_y=round(game.dino_y, 2),
+        dino_vy=round(game.dino_vy, 2),
+        jumping=game.jumping,
+        ducking=game.ducking,
+        speed=round(game.speed, 3),
+        collision=game.last_collision,
+        obstacles=[
+            obstacle_debug_snapshot(obstacle)
+            for obstacle in game.obstacles
+        ],
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2780,6 +2891,12 @@ def main(stdscr, cli_args: CliArgs | None = None):
                     for obstacle in spawned_obstacles:
                         recorder.record_obstacle(event_frame, obstacle)
                     if game.game_over:
+                        debug_log_llm_game_over(
+                            agent,
+                            game,
+                            frame=event_frame,
+                            action=action,
+                        )
                         finish_recording(recorder)
             renderer.draw(
                 game,
