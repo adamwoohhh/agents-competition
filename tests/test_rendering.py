@@ -64,7 +64,7 @@ class CachedFrameRendererTest(unittest.TestCase):
 
 
 class GameOverSavePromptTest(unittest.TestCase):
-    def rendered_text(self, save_status):
+    def rendered_text(self, save_status, retry_available=False):
         dino_game = importlib.import_module("dino_game")
 
         class FakeScreen:
@@ -88,7 +88,12 @@ class GameOverSavePromptTest(unittest.TestCase):
         renderer = dino_game.Renderer.__new__(dino_game.Renderer)
         renderer.scr = FakeScreen()
         with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
-            renderer.draw(game, "", game_over_save_status=save_status)
+            renderer.draw(
+                game,
+                "",
+                game_over_save_status=save_status,
+                game_over_retry_available=retry_available,
+            )
         return "\n".join(renderer.scr.calls)
 
     def test_game_over_prompt_shows_save_action_before_save(self):
@@ -96,3 +101,7 @@ class GameOverSavePromptTest(unittest.TestCase):
 
     def test_game_over_prompt_shows_saved_message_after_save(self):
         self.assertIn("已保存记录", self.rendered_text("saved"))
+
+    def test_llm_game_over_prompt_shows_recalculate_action(self):
+        self.assertIn("C = 失败处重试", self.rendered_text("unsaved", retry_available=True))
+        self.assertIn("R = 重新开始", self.rendered_text("unsaved", retry_available=True))

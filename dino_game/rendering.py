@@ -274,7 +274,8 @@ class Renderer:
             loading_text: str | None = None,
             cached_frames_text: str | None = None,
             cached_frames_view: CachedFrameWindow | None = None,
-            game_over_save_status: str | None = None):
+            game_over_save_status: str | None = None,
+            game_over_retry_available: bool = False):
         """绘制完整的一帧画面
 
         绘制顺序（从后到前）:
@@ -368,12 +369,14 @@ class Renderer:
             replay_line = "║   S = 保存游戏记录       ║"
             if game_over_save_status == "saved":
                 replay_line = "║        已保存记录        ║"
+            retry_line = "║   C = 失败处重试         ║"
             msgs = [
                 "╔══════════════════════════╗",
                 "║      G A M E  O V E R   ║",
                 f"║      Score: {game.score:>5d}       ║",
                 replay_line if game_over_save_status else "║                          ║",
-                "║   R = 重来   Q = 退出    ║",
+                retry_line if game_over_retry_available else "║                          ║",
+                "║   R = 重新开始 Q = 退出  ║",
                 "╚══════════════════════════╝",
             ]
             mid_y = h // 2 - len(msgs) // 2

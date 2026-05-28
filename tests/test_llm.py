@@ -673,6 +673,48 @@ class LLMAgentOpenAITest(unittest.TestCase):
         self.assertEqual(thread_kwargs["start_frame"], 601)
         self.assertEqual(thread_kwargs["current_frame"], 580)
 
+    def test_llm_discard_plan_after_ignores_stale_background_response(self):
+        dino_game = self.dino_game()
+        config = dino_game.LLMConfig(
+            api_key="sk-test",
+            base_url="https://example.test/v1",
+            model="gpt-test",
+        )
+        agent = dino_game.LLMAgent(config)
+        agent.planned_actions = {5: "jump", 6: "duck", 30: "jump"}
+        agent.consumed_actions = {4: "none", 6: "duck"}
+        stale_generation = agent.plan_generation
+
+        agent.discard_plan_after(5)
+        agent.planner = mock.Mock()
+        agent.planner.build_request.return_value = (
+            {"obstacles": [{"kind": "cactus_group"}]},
+            "prompt",
+            {"format": "json"},
+        )
+        agent.client = mock.Mock()
+        agent.client.create_response.return_value = mock.Mock(
+            request_payload={"input": "prompt"},
+            response_text=json.dumps({
+                "start_frame": 6,
+                "actions": ["jump", "jump"],
+            }),
+            raw_response={"ok": True},
+        )
+        agent.planner.parse_response.return_value = {6: "jump", 7: "jump"}
+
+        agent._call_llm(
+            {"obstacles": [{"kind": "cactus_group"}]},
+            start_frame=6,
+            current_frame=5,
+            window_frames=2,
+            generation=stale_generation,
+        )
+
+        self.assertEqual(agent.planned_actions, {5: "jump"})
+        self.assertEqual(agent.consumed_actions, {4: "none"})
+        self.assertEqual(agent.requested_until_frame, 5)
+
     def test_llm_debug_writes_request_and_response_json_lines_to_file(self):
         dino_game = self.dino_game()
         config = dino_game.LLMConfig(

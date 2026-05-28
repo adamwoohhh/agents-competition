@@ -537,6 +537,7 @@ class LLMAgent:
         self.requested_until_frame = 0
         self.request_in_flight = False
         self.requested_frame_ranges: list[tuple[int, int]] = []
+        self.plan_generation = 0
         self.lock = threading.Lock()    # 线程安全锁
         self.config = config or load_llm_config()
         self.client = LLMClient(self.config)
@@ -563,7 +564,8 @@ class LLMAgent:
             *,
             start_frame: int,
             current_frame: int | None = None,
-            window_frames: int = LLM_ACTION_WINDOW_FRAMES):
+            window_frames: int = LLM_ACTION_WINDOW_FRAMES,
+            generation: int | None = None):
         """在后台线程中调用 OpenAI Responses API。"""
         if current_frame is None:
             current_frame = start_frame - 1
@@ -605,11 +607,15 @@ class LLMAgent:
             )
 
             with self.lock:
+                if generation is not None and generation != self.plan_generation:
+                    return
                 self.planned_actions.update(planned)
                 self.requested_until_frame = max(planned)
 
         except Exception as exc:
             with self.lock:
+                if generation is not None and generation != self.plan_generation:
+                    return
                 planned = self._fallback_actions(start_frame, window_frames)
                 self.planned_actions.update(planned)
                 self.requested_until_frame = max(planned)
@@ -623,7 +629,8 @@ class LLMAgent:
             )
         finally:
             with self.lock:
-                self.request_in_flight = False
+                if generation is None or generation == self.plan_generation:
+                    self.request_in_flight = False
 
     def _fallback_actions(
             self,
@@ -662,9 +669,26 @@ class LLMAgent:
 
     def reset_plan(self):
         with self.lock:
+            self.plan_generation += 1
             self.planned_actions.clear()
             self.consumed_actions.clear()
             self.requested_until_frame = 0
+            self.request_in_flight = False
+            self.requested_frame_ranges.clear()
+
+    def discard_plan_after(self, frame: int):
+        """Discard cached/requested LLM actions after frame so planning can restart."""
+        with self.lock:
+            self.plan_generation += 1
+            for planned_frame in list(self.planned_actions):
+                if planned_frame > frame:
+                    self.planned_actions.pop(planned_frame, None)
+            for consumed_frame in list(self.consumed_actions):
+                if consumed_frame > frame:
+                    self.consumed_actions.pop(consumed_frame, None)
+            self.requested_until_frame = max(
+                [frame, *self.planned_actions.keys()],
+            )
             self.request_in_flight = False
             self.requested_frame_ranges.clear()
 
@@ -689,6 +713,7 @@ class LLMAgent:
                 return
             self.request_in_flight = True
             self.requested_frame_ranges.append((request_start, request_end))
+            generation = self.plan_generation
         t = threading.Thread(
             target=self._call_llm,
             args=(state,),
@@ -696,6 +721,7 @@ class LLMAgent:
                 "start_frame": request_start,
                 "current_frame": start_frame - 1,
                 "window_frames": LLM_ACTION_WINDOW_FRAMES,
+                "generation": generation,
             },
             daemon=True,
         )
