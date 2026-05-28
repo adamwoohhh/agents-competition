@@ -7,6 +7,7 @@ import time
 from .engine import DinoGame, apply_game_action
 from .input import ManualInputState, manual_action_from_key, next_pause_state, PauseState
 from .replay import ReplayPlayer, ReplayRecorder, finish_recording
+from .scores import load_high_score, save_high_score
 
 class CompetitionRun:
     """协调竞技模式中的历史赛道和玩家赛道。"""
@@ -20,6 +21,7 @@ class CompetitionRun:
         self.source_replay = os.fspath(source_replay)
         self.history_game = DinoGame(rng=random.Random(replay_player.seed))
         self.player_game = DinoGame(rng=random.Random(replay_player.seed))
+        self.player_game.high_score = load_high_score("competitive")
         self.recorder = ReplayRecorder(
             record_path,
             seed=replay_player.seed,
@@ -30,6 +32,7 @@ class CompetitionRun:
         self.frame = 0
         self.history_finished = replay_player.max_frame <= 0
         self.player_finished = False
+        self.high_score_saved = False
 
     @property
     def finished(self) -> bool:
@@ -71,6 +74,12 @@ class CompetitionRun:
             self.player_finished = self.player_game.game_over
 
         if self.finished:
+            if not self.high_score_saved:
+                self.player_game.high_score = save_high_score(
+                    "competitive",
+                    self.player_game.score,
+                )
+                self.high_score_saved = True
             finish_recording(self.recorder)
 
 def run_competition_loop(stdscr, renderer: Renderer, competition: CompetitionRun):

@@ -10,4 +10,4 @@ class InitTest(unittest.TestCase):
         self.assertTrue(callable(dino_game.DinoGame))
         self.assertTrue(callable(dino_game.LLMAgent))
         self.assertTrue(callable(dino_game.ReplayPlayer))
-
+        self.assertTrue(callable(dino_game.load_high_score))

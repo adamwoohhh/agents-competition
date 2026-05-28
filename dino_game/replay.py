@@ -458,6 +458,6 @@ def start_recording_run(
     return game, ReplayRecorder(path, seed, mode=mode)
 
 def finish_recording(recorder: ReplayRecorder | None):
-    """Game Over 时保存当前局；重复调用不会重复写。"""
+    """Save the current replay recorder; repeated calls do not rewrite."""
     if recorder:
         recorder.save()

@@ -108,7 +108,7 @@ class Renderer:
             f" {label} ",
             curses.A_BOLD | curses.color_pair(dino_color_pair),
         )
-        score_text = f"{status}  {game.score:05d}"
+        score_text = f"HI {game.high_score:05d}  {status}  {game.score:05d}"
         self.safe_addstr(
             header_y,
             max(2, w - len(score_text) - 2),
@@ -273,7 +273,8 @@ class Renderer:
             now: float | None = None,
             loading_text: str | None = None,
             cached_frames_text: str | None = None,
-            cached_frames_view: CachedFrameWindow | None = None):
+            cached_frames_view: CachedFrameWindow | None = None,
+            game_over_save_status: str | None = None):
         """绘制完整的一帧画面
 
         绘制顺序（从后到前）:
@@ -364,11 +365,14 @@ class Renderer:
 
         # ── Game Over 弹窗 ──
         if game.game_over:
+            replay_line = "║   S = 保存游戏记录       ║"
+            if game_over_save_status == "saved":
+                replay_line = "║        已保存记录        ║"
             msgs = [
                 "╔══════════════════════════╗",
                 "║      G A M E  O V E R   ║",
                 f"║      Score: {game.score:>5d}       ║",
-                "║                          ║",
+                replay_line if game_over_save_status else "║                          ║",
                 "║   R = 重来   Q = 退出    ║",
                 "╚══════════════════════════╝",
             ]

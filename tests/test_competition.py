@@ -102,3 +102,23 @@ class CompetitionModeTest(unittest.TestCase):
             self.assertTrue(data["competitive"])
             self.assertEqual(data["mode"], "competitive")
             self.assertEqual(data["source_replay"], "replays/source.json")
+
+    def test_competition_run_updates_competitive_high_score_on_finish(self):
+        dino_game = importlib.import_module("dino_game")
+        replay = self.make_replay_player(frames=0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            recorder_path = pathlib.Path(tmpdir) / "competition.json"
+            with mock.patch("dino_game.competition.save_high_score", return_value=88) as save_high_score:
+                run = dino_game.CompetitionRun(
+                    replay,
+                    source_replay="replays/source.json",
+                    record_path=recorder_path,
+                )
+                run.player_game.score = 88
+                run.player_game.game_over = True
+
+                run.step("none")
+
+        save_high_score.assert_called_once_with("competitive", 88)
+        self.assertEqual(run.player_game.high_score, 88)

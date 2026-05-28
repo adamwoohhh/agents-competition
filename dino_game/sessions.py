@@ -29,6 +29,7 @@ from .replay import (
     select_replay_file,
     start_recording_run,
 )
+from .scores import load_high_score, save_high_score
 
 
 class ReplayListSession:
@@ -76,7 +77,9 @@ class PlaySession:
         self.manual_input = ManualInputState()
         self.pause_state = PauseState()
         self.event_frame = 0
+        self.game_over_save_status: str | None = None
         self.game, self.recorder = self._new_game()
+        self._apply_high_score()
         self.agent, self.agent_name = self._new_agent()
 
     def _new_game(self):
@@ -87,6 +90,10 @@ class PlaySession:
             self.cli_args.record_path,
             self.run_index,
         )
+
+    def _apply_high_score(self):
+        if not self.replay_player:
+            self.game.high_score = load_high_score(self.mode)
 
     def _new_agent(self):
         if self.replay_player:
@@ -153,6 +160,7 @@ class PlaySession:
                         self.agent,
                         self.event_frame + 1,
                     ),
+                    game_over_save_status=self.game_over_save_status,
                 )
         except KeyboardInterrupt:
             return
@@ -176,12 +184,18 @@ class PlaySession:
             )
             return
 
+        if key in (ord("s"), ord("S")) and self.recorder and self.game_over_save_status != "saved":
+            finish_recording(self.recorder)
+            self.game_over_save_status = "saved"
+
         if should_reset_after_game_over(key, agent_active=bool(self.agent)):
             self.run_index += 1
             self.game, self.recorder = self._new_game()
+            self._apply_high_score()
             self.manual_input = ManualInputState()
             self.pause_state = PauseState()
             self.event_frame = 0
+            self.game_over_save_status = None
             if isinstance(self.agent, LLMAgent):
                 self.agent.reset_plan()
                 if self.cli_args.llm_debug and self.recorder:
@@ -195,6 +209,7 @@ class PlaySession:
                 self.agent,
                 self.event_frame + 1,
             ),
+            game_over_save_status=self.game_over_save_status,
         )
 
     def _next_action(self, key: int) -> str | None:
@@ -250,13 +265,16 @@ class PlaySession:
         for obstacle in spawned_obstacles:
             self.recorder.record_obstacle(self.event_frame, obstacle)
         if self.game.game_over:
+            if self.game_over_save_status is None:
+                self.game_over_save_status = "unsaved" if self.recorder else None
+            if not self.replay_player:
+                self.game.high_score = save_high_score(self.mode, self.game.score)
             debug_log_llm_game_over(
                 self.agent,
                 self.game,
                 frame=self.event_frame,
                 action=action,
             )
-            finish_recording(self.recorder)
 
 
 class ManualSession(PlaySession):

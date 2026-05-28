@@ -13,6 +13,7 @@ from .input import *  # noqa: F401,F403
 from .llm import *  # noqa: F401,F403
 from .replay import *  # noqa: F401,F403
 from .rendering import *  # noqa: F401,F403
+from .scores import *  # noqa: F401,F403
 
 _CLI_EXPORTS = {
     "CliArgs",

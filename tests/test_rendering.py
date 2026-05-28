@@ -61,3 +61,38 @@ class CachedFrameRendererTest(unittest.TestCase):
         self.assertIn(" ↑ ", segments)
         self.assertNotEqual(segments["[-]"], segments[" ↓ "])
         self.assertNotEqual(segments["[-]"], segments[" ↑ "])
+
+
+class GameOverSavePromptTest(unittest.TestCase):
+    def rendered_text(self, save_status):
+        dino_game = importlib.import_module("dino_game")
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def erase(self):
+                pass
+
+            def getmaxyx(self):
+                return (24, 120)
+
+            def addstr(self, y, x, text, attr=0):
+                self.calls.append(text)
+
+            def refresh(self):
+                pass
+
+        game = dino_game.DinoGame()
+        game.game_over = True
+        renderer = dino_game.Renderer.__new__(dino_game.Renderer)
+        renderer.scr = FakeScreen()
+        with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
+            renderer.draw(game, "", game_over_save_status=save_status)
+        return "\n".join(renderer.scr.calls)
+
+    def test_game_over_prompt_shows_save_action_before_save(self):
+        self.assertIn("S = 保存游戏记录", self.rendered_text("unsaved"))
+
+    def test_game_over_prompt_shows_saved_message_after_save(self):
+        self.assertIn("已保存记录", self.rendered_text("saved"))
