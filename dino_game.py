@@ -83,6 +83,7 @@ SPAWN_MAX = 90            # 连续障碍物之间的最大间距（终端列）
 
 RUN_ANIM_FRAME_INTERVAL = max(1, round(FPS / 12))
 BIRD_ANIM_FRAME_INTERVAL = max(1, round(FPS / 8))
+LOADING_DINO_ANIM_INTERVAL = 0.35
 SPEED_DROP_MULTIPLIER = 3.0
 REPLAY_DIR = "replays"
 VERSION = "0.1.0"
@@ -154,6 +155,39 @@ DINO_JUMP = [             # 跳跃姿态 — 腿伸直
     r"  ████▄   ",
     r"   ██     ",
     r"   █  █   ",         # 腿伸直张开
+]
+
+DINO_LOADING_STAND = DINO_RUN_1
+
+DINO_LOADING_STAND_BLINK = [
+    r"    ▄███▄ ",
+    r"    ██▀▀▀ ",
+    r"  ▄██████ ",
+    r"  ████▄   ",
+    r"   ██     ",
+    r"   █▄ ▄   ",
+]
+
+DINO_LOADING_JUMP_OPEN = DINO_JUMP
+
+DINO_LOADING_JUMP = [     # LLM loading: 原始跳跃姿态眨眼
+    r"    ▄███▄ ",
+    r"    ██▀▀▀ ",
+    r"  ▄██████ ",
+    r"  ████▄   ",
+    r"   ██     ",
+    r"   █  █   ",
+]
+
+DINO_LOADING_DUCK_OPEN = DINO_DUCK
+
+DINO_LOADING_DUCK = [     # LLM loading: 原始蹲下姿态眨眼
+    r"          ",
+    r"          ",
+    r"    ▄███▄ ",
+    r"  ██▀▀▀▀█ ",
+    r"  ▀██████ ",
+    r"    █▄ ▄█ ",
 ]
 
 # ── 障碍物 ──
@@ -2325,6 +2359,31 @@ def footer_hint(agent_name: str, speed: float) -> str:
     return "SPACE/↑ 跳跃 | ↓ 蹲下 | Enter 暂停 | Q 退出"
 
 
+def loading_dino_blinks(animation_time: float) -> bool:
+    return int(animation_time / LOADING_DINO_ANIM_INTERVAL) % 2 == 1
+
+
+def dino_art_for_state(
+        game: DinoGame,
+        loading: bool = False,
+        animation_time: float = 0.0) -> list[str]:
+    """Select visual dino art without affecting physics or collision boxes."""
+    if loading:
+        blink = loading_dino_blinks(animation_time)
+        if game.ducking:
+            return DINO_LOADING_DUCK if blink else DINO_LOADING_DUCK_OPEN
+        if game.jumping:
+            return DINO_LOADING_JUMP if blink else DINO_LOADING_JUMP_OPEN
+        return DINO_LOADING_STAND_BLINK if blink else DINO_LOADING_STAND
+    if game.ducking:
+        return DINO_DUCK
+    if game.jumping:
+        return DINO_JUMP
+    if (game.frame // RUN_ANIM_FRAME_INTERVAL) % 2 == 0:
+        return DINO_RUN_1
+    return DINO_RUN_2
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 渲染器 — 把游戏状态画到终端
 # ═══════════════════════════════════════════════════════════════════════
@@ -2570,14 +2629,13 @@ class Renderer:
 
         # ── 恐龙 ──
         # 根据状态选择动画帧
-        if game.ducking:
-            art = DINO_DUCK
-        elif game.jumping:
-            art = DINO_JUMP
-        elif (game.frame // RUN_ANIM_FRAME_INTERVAL) % 2 == 0:
-            art = DINO_RUN_1
-        else:
-            art = DINO_RUN_2
+        loading_dino = bool(loading_text and not (pause_state and pause_state.status != "running"))
+        animation_time = now if now is not None else time.monotonic()
+        art = dino_art_for_state(
+            game,
+            loading=loading_dino,
+            animation_time=animation_time,
+        )
 
         # 游戏 Y 坐标 → 屏幕行号
         dino_screen_y = ground_row - len(art) - int(game.dino_y)
