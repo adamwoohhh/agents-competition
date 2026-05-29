@@ -59,6 +59,9 @@ dino config +setup
 dino play --llm
 dino play --llm --debug
 
+# 查看当天、近 7/30/90 天和全部时间的得分/token dashboard
+dino dashboard
+
 # 查看或重置 LLM 配置
 dino config
 dino config +reset
@@ -89,6 +92,7 @@ python3 -m dino_game.cli play
 python3 -m dino_game.cli play --auto
 python3 -m dino_game.cli play --llm
 python3 -m dino_game.cli play --llm --debug
+python3 -m dino_game.cli dashboard
 python3 -m dino_game.cli config
 python3 -m dino_game.cli config +setup
 python3 -m dino_game.cli config +reset
@@ -110,6 +114,7 @@ python3 -m dino_game.cli compete run.json
 | `dino play --llm api` | 使用 OpenAI Responses API 决策 | `~/.config/ai-dino-in-terminal/config.json` 或启动时交互输入 |
 | `dino play --llm codex` | 使用本地 Codex CLI 决策 | Codex CLI，且版本满足要求 |
 | `dino play --llm --debug` | 使用 LLM 决策并写调试日志 | `logs/*.json` |
+| `dino dashboard` | 查看带动画 banner 的累计得分和 token dashboard | `~/.config/ai-dino-in-terminal/game_records.jsonl` |
 | `dino replay` | 从历史运行记录列表选择并重放 | `replays/*.json` |
 | `dino replay run.json` | 直接从指定文件重放 | 对应 replay 文件 |
 | `dino replay +list` | 浏览所有 replay 文件，回车查看元信息 | `replays/*.json` |

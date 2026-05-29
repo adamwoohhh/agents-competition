@@ -30,6 +30,7 @@ _RUNTIME_EXPORTS = {"main"}
 _SESSION_EXPORTS = {
     "AgentSession",
     "CompetitionSession",
+    "DashboardSession",
     "ManualSession",
     "PlaySession",
     "ReplayListSession",

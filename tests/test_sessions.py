@@ -103,6 +103,17 @@ class SessionsTest(unittest.TestCase):
         self.assertIsInstance(session, sessions.ReplayListSession)
         renderer_class.assert_not_called()
 
+    def test_dashboard_command_uses_dashboard_session(self):
+        stdscr = object()
+        cli_args = CliArgs(command="dashboard")
+
+        with mock.patch("dino_game.sessions.Renderer") as renderer_class:
+            renderer_class.return_value = mock.Mock()
+            session = sessions.session_for_cli_args(stdscr, cli_args)
+
+        self.assertIsInstance(session, sessions.DashboardSession)
+        renderer_class.assert_called_once_with(stdscr)
+
     def test_manual_session_next_action_uses_manual_input_helper(self):
         renderer = mock.Mock()
         session = sessions.ManualSession(
@@ -226,6 +237,7 @@ class SessionsTest(unittest.TestCase):
         with (
             mock.patch("dino_game.sessions.load_high_score", return_value=41),
             mock.patch("dino_game.sessions.save_high_score", return_value=50) as save_high_score,
+            mock.patch("dino_game.sessions.append_game_record") as append_game_record,
         ):
             session = sessions.ManualSession(
                 stdscr=mock.Mock(),
@@ -239,7 +251,30 @@ class SessionsTest(unittest.TestCase):
             session._update_game("none")
 
         save_high_score.assert_called_once_with("manual", 50)
+        append_game_record.assert_called_once_with("manual", 50, total_tokens=0)
         self.assertEqual(session.game.high_score, 50)
+
+    def test_llm_game_over_records_token_usage(self):
+        renderer = mock.Mock()
+        config = dino_game.LLMConfig("key", "https://example.test/v1", "model")
+        with mock.patch("dino_game.sessions.append_game_record") as append_game_record:
+            session = sessions.AgentSession(
+                stdscr=mock.Mock(),
+                renderer=renderer,
+                cli_args=CliArgs(command="play", mode="llm", llm_config=config),
+            )
+            session.agent.token_usage_snapshot = mock.Mock(return_value={
+                "prompt_tokens": 100,
+                "completion_tokens": 25,
+                "total_tokens": 125,
+                "events": [],
+            })
+            session.game.score = 77
+            session.game.update = lambda: setattr(session.game, "game_over", True) or []
+            with mock.patch("dino_game.sessions.save_high_score", return_value=77):
+                session._update_game("none")
+
+        append_game_record.assert_called_once_with("llm", 77, total_tokens=125)
 
     def test_llm_game_over_waits_for_c_before_rewinding_lifeline(self):
         renderer = mock.Mock()

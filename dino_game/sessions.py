@@ -35,7 +35,13 @@ from .replay import (
     select_replay_file,
     start_recording_run,
 )
-from .scores import load_high_score, save_high_score
+from .scores import (
+    append_game_record,
+    aggregate_game_records,
+    load_game_records,
+    load_high_score,
+    save_high_score,
+)
 
 LLM_TOKEN_USAGE_ANIMATION_SECONDS = 2.0
 
@@ -46,6 +52,19 @@ class ReplayListSession:
 
     def run(self):
         browse_replay_files(self.stdscr, list_replay_files())
+
+
+class DashboardSession:
+    def __init__(self, stdscr, renderer: Renderer):
+        self.stdscr = stdscr
+        self.renderer = renderer
+
+    def run(self):
+        while True:
+            key = self.stdscr.getch()
+            if key in (ord("q"), ord("Q")):
+                return
+            self.renderer.draw_dashboard(aggregate_game_records(load_game_records()))
 
 
 def restore_game_input_mode(stdscr):
@@ -381,6 +400,13 @@ class PlaySession:
                 self.game_over_save_status = "unsaved" if self.recorder else None
             if not self.replay_player:
                 self.game.high_score = save_high_score(self.mode, self.game.score)
+                usage = self._llm_usage_snapshot()
+                total_tokens = usage.get("total_tokens", 0) if usage else 0
+                append_game_record(
+                    self.mode,
+                    self.game.score,
+                    total_tokens=total_tokens,
+                )
             debug_log_llm_game_over(
                 self.agent,
                 self.game,
@@ -522,6 +548,9 @@ def session_for_cli_args(stdscr, cli_args: CliArgs):
         return ReplayListSession(stdscr)
 
     renderer = Renderer(stdscr)
+    if cli_args.command == "dashboard":
+        return DashboardSession(stdscr, renderer)
+
     if cli_args.command == "compete":
         replay_path = cli_args.competition_path or select_replay_file(
             stdscr,

@@ -7,7 +7,7 @@ import time
 from .engine import DinoGame, apply_game_action
 from .input import ManualInputState, manual_action_from_key, next_pause_state, PauseState
 from .replay import ReplayPlayer, ReplayRecorder, finish_recording
-from .scores import load_high_score, save_high_score
+from .scores import append_game_record, load_high_score, save_high_score
 
 class CompetitionRun:
     """协调竞技模式中的历史赛道和玩家赛道。"""
@@ -78,6 +78,11 @@ class CompetitionRun:
                 self.player_game.high_score = save_high_score(
                     "competitive",
                     self.player_game.score,
+                )
+                append_game_record(
+                    "competitive",
+                    self.player_game.score,
+                    total_tokens=0,
                 )
                 self.high_score_saved = True
             finish_recording(self.recorder)

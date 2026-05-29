@@ -39,6 +39,7 @@ class CliArgs:
 COMMAND_GROUPS = [
     ("Core", [
         ("play", "Start a manual, auto, or LLM game"),
+        ("dashboard", "View score and token totals"),
     ]),
     ("Replay", [
         ("replay", "Play, inspect, or clear replay records"),
@@ -103,6 +104,12 @@ def render_command_help(command: str) -> str:
             "  --llm [MODE]     Run with the LLM agent; MODE is api or codex",
             "  --debug          With --llm, write request and response JSON lines to logs/",
             "  Replay saving is offered after Game Over",
+        ]
+    elif command == "dashboard":
+        usage = "dino dashboard"
+        options = [
+            "  Opens an animated curses dashboard",
+            "  Q                Exit the dashboard",
         ]
     elif command == "replay":
         usage = "dino replay [FILE]"
@@ -222,6 +229,11 @@ def parse_cli_args(args: list[str]) -> CliArgs:
             llm_mode=llm_mode,
             llm_debug=llm_debug,
         )
+
+    if command == "dashboard":
+        if command_args:
+            return CliArgs(command=command, show_help=True, help_text=render_command_help(command))
+        return CliArgs(command=command)
 
     if command == "replay":
         if command_args == ["+list"]:

@@ -21,6 +21,8 @@ class CliContractTest(unittest.TestCase):
         self.assertIn("Core", help_text)
         self.assertIn("play", help_text)
         self.assertIn("Start a manual, auto, or LLM game", help_text)
+        self.assertIn("dashboard", help_text)
+        self.assertIn("View score and token totals", help_text)
         self.assertIn("Replay", help_text)
         self.assertIn("replay", help_text)
         self.assertIn("Play, inspect, or clear replay records", help_text)
@@ -51,6 +53,7 @@ class CliContractTest(unittest.TestCase):
         compete_help = dino_game.render_command_help("compete")
         config_help = dino_game.render_command_help("config")
         setup_help = dino_game.render_command_help("setup")
+        dashboard_help = dino_game.render_command_help("dashboard")
 
         self.assertIn("Usage: dino play [--auto|--llm [api|codex]] [--debug]", play_help)
         self.assertIn("--auto", play_help)
@@ -68,8 +71,10 @@ class CliContractTest(unittest.TestCase):
         self.assertIn("+reset", config_help)
         self.assertIn("Usage: dino setup", setup_help)
         self.assertIn("API LLM settings", setup_help)
+        self.assertIn("Usage: dino dashboard", dashboard_help)
+        self.assertIn("Q", dashboard_help)
         self.assertNotRegex(
-            play_help + replay_help + compete_help + config_help + setup_help,
+            play_help + replay_help + compete_help + config_help + setup_help + dashboard_help,
             r"[\u4e00-\u9fff]",
         )
 
@@ -100,6 +105,8 @@ class CliContractTest(unittest.TestCase):
         self.assertEqual(dino_game.parse_cli_args(["config", "+reset"]).config_action, "reset")
         self.assertEqual(dino_game.parse_cli_args(["setup"]).command, "setup")
         self.assertEqual(dino_game.parse_cli_args(["setup"]).config_action, "setup")
+        self.assertEqual(dino_game.parse_cli_args(["dashboard"]).command, "dashboard")
+        self.assertTrue(dino_game.parse_cli_args(["dashboard", "extra"]).show_help)
         self.assertTrue(dino_game.parse_cli_args(["setup", "extra"]).show_help)
         self.assertTrue(dino_game.parse_cli_args(["config", "+unknown"]).show_help)
         self.assertTrue(dino_game.parse_cli_args(["play", "--record", "run.json"]).show_help)

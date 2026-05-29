@@ -136,3 +136,66 @@ class GameOverSavePromptTest(unittest.TestCase):
     def test_llm_game_over_prompt_shows_recalculate_action(self):
         self.assertIn("C = 失败处重试", self.rendered_text("unsaved", retry_available=True))
         self.assertIn("R = 重新开始", self.rendered_text("unsaved", retry_available=True))
+
+
+class DashboardRendererTest(unittest.TestCase):
+    class FakeScreen:
+        def __init__(self):
+            self.calls = []
+
+        def erase(self):
+            pass
+
+        def getmaxyx(self):
+            return (32, 120)
+
+        def addstr(self, y, x, text, attr=0):
+            self.calls.append((y, x, text, attr))
+
+        def refresh(self):
+            pass
+
+    def rendered_text(self, summary):
+        dino_game = importlib.import_module("dino_game")
+        renderer = dino_game.Renderer.__new__(dino_game.Renderer)
+        renderer.scr = self.FakeScreen()
+
+        with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
+            renderer.draw_dashboard(summary, now=0.0)
+
+        return "\n".join(text for _, _, text, _ in renderer.scr.calls)
+
+    def test_draw_dashboard_renders_banner_and_mode_totals(self):
+        text = self.rendered_text([
+            {
+                "label": "Today",
+                "modes": {
+                    "manual": {"score": 12, "total_tokens": 0},
+                    "llm": {"score": 34, "total_tokens": 1500},
+                },
+            },
+            {
+                "label": "All time",
+                "modes": {
+                    "llm": {"score": 56, "total_tokens": 2_500_000},
+                },
+            },
+        ])
+
+        self.assertIn("DINO", text)
+        self.assertIn("▄███▄", text)
+        self.assertIn("Today", text)
+        self.assertIn("All time", text)
+        self.assertIn("manual", text)
+        self.assertIn("llm", text)
+        self.assertIn("1.5K", text)
+        self.assertIn("2.5M", text)
+        self.assertIn("Q 退出", text)
+
+    def test_draw_dashboard_renders_empty_state(self):
+        text = self.rendered_text([
+            {"label": "Today", "modes": {}},
+            {"label": "All time", "modes": {}},
+        ])
+
+        self.assertIn("No completed games recorded yet.", text)

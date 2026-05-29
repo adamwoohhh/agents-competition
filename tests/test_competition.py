@@ -109,7 +109,10 @@ class CompetitionModeTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             recorder_path = pathlib.Path(tmpdir) / "competition.json"
-            with mock.patch("dino_game.competition.save_high_score", return_value=88) as save_high_score:
+            with (
+                mock.patch("dino_game.competition.save_high_score", return_value=88) as save_high_score,
+                mock.patch("dino_game.competition.append_game_record") as append_game_record,
+            ):
                 run = dino_game.CompetitionRun(
                     replay,
                     source_replay="replays/source.json",
@@ -121,4 +124,5 @@ class CompetitionModeTest(unittest.TestCase):
                 run.step("none")
 
         save_high_score.assert_called_once_with("competitive", 88)
+        append_game_record.assert_called_once_with("competitive", 88, total_tokens=0)
         self.assertEqual(run.player_game.high_score, 88)

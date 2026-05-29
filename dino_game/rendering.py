@@ -8,6 +8,7 @@ from .constants import *
 from .engine import DinoGame
 from .input import PauseState, pause_overlay_lines
 from .llm import CachedFrameWindow
+from .scores import format_compact_tokens
 
 def footer_hint(agent_name: str, speed: float) -> str:
     """根据当前模式返回底部操作提示。"""
@@ -264,6 +265,79 @@ class Renderer:
         for text, attr in segments:
             self.safe_addstr(y, cursor, text, attr)
             cursor += len(text)
+
+    def draw_dashboard(self, summary: list[dict], now: float | None = None):
+        """Draw the animated score and token usage dashboard."""
+        self.scr.erase()
+        h, w = self.scr.getmaxyx()
+        animation_time = time.monotonic() if now is None else now
+
+        title = "DINO"
+        subtitle = "Score Dashboard"
+        title_x = max(2, w // 2 - len(title) // 2)
+        self.safe_addstr(1, title_x, title, curses.A_BOLD | curses.color_pair(1))
+        self.safe_addstr(
+            2,
+            max(2, w // 2 - len(subtitle) // 2),
+            subtitle,
+            curses.color_pair(4) | curses.A_DIM,
+        )
+
+        dino = DINO_RUN_1 if int(animation_time / 0.25) % 2 == 0 else DINO_RUN_2
+        dino_x = max(2, min(w - 12, title_x - 16))
+        for row, line in enumerate(dino):
+            self.safe_addstr(1 + row, dino_x, line, curses.A_BOLD | curses.color_pair(1))
+
+        ground_y = min(h - 3, 8)
+        pattern = "▁▁▁▁▂▁▁▁▂▁▁▁▁▁▂▁▁▁"
+        ground = (pattern * ((w // len(pattern)) + 2))[:max(0, w - 1)]
+        self.safe_addstr(ground_y, 0, ground, curses.color_pair(5) | curses.A_DIM)
+
+        table_y = ground_y + 2
+        headers = ("Window", "Mode", "Score", "Tokens")
+        widths = (16, 14, 12, 10)
+        header = (
+            f"{headers[0]:<{widths[0]}}"
+            f"{headers[1]:<{widths[1]}}"
+            f"{headers[2]:>{widths[2]}}  "
+            f"{headers[3]:>{widths[3]}}"
+        )
+        self.safe_addstr(table_y, 2, header, curses.A_BOLD | curses.color_pair(3))
+        self.safe_addstr(table_y + 1, 2, "-" * len(header), curses.A_DIM)
+
+        row_y = table_y + 2
+        any_rows = False
+        for window in summary:
+            label = str(window.get("label", ""))
+            modes = window.get("modes", {})
+            if not modes:
+                continue
+            for mode in sorted(modes):
+                totals = modes[mode]
+                line = (
+                    f"{label:<{widths[0]}}"
+                    f"{mode:<{widths[1]}}"
+                    f"{int(totals.get('score', 0)):>{widths[2]}}  "
+                    f"{format_compact_tokens(totals.get('total_tokens', 0)):>{widths[3]}}"
+                )
+                self.safe_addstr(row_y, 2, line, curses.color_pair(5))
+                row_y += 1
+                any_rows = True
+                if row_y >= h - 2:
+                    break
+            if row_y >= h - 2:
+                break
+
+        if not any_rows:
+            self.safe_addstr(
+                table_y + 3,
+                2,
+                "No completed games recorded yet.",
+                curses.color_pair(6) | curses.A_DIM,
+            )
+
+        self.safe_addstr(h - 1, 2, "Q 退出", curses.A_DIM)
+        self.scr.refresh()
 
     def draw(
             self,
