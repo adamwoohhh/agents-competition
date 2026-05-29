@@ -66,6 +66,21 @@ MAX_SPEED = 3.8           # 速度上限，约为初始速度的 2.17 倍
 
 NORMAL_OBSTACLE_SPAWN_X = 82
 
+
+def obstacle_spawn_x_for_terminal_width(width: int | None) -> int:
+    """Return the obstacle spawn X for a terminal width.
+
+    The original tuning assumes an 80-column terminal where x=82 is just off
+    the right edge. Wider terminals need a wider spawn point so new obstacles
+    enter from the visible playfield's right edge instead of the middle.
+    """
+    try:
+        parsed_width = int(width)
+    except (TypeError, ValueError):
+        return NORMAL_OBSTACLE_SPAWN_X
+    return max(NORMAL_OBSTACLE_SPAWN_X, parsed_width)
+
+
 LLM_FORECAST_MAX_X = max(
     1250,
     math.ceil(MAX_SPEED * LLM_ACTION_WINDOW_FRAMES + DINO_COL - 10),

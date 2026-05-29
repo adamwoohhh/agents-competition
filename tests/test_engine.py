@@ -53,6 +53,18 @@ class GameTuningTest(unittest.TestCase):
 
         self.assertEqual(game.obstacles[0].x, dino_game.NORMAL_OBSTACLE_SPAWN_X)
 
+    def test_obstacle_spawn_position_scales_to_terminal_width(self):
+        dino_game = importlib.import_module("dino_game")
+
+        self.assertEqual(
+            dino_game.obstacle_spawn_x_for_terminal_width(160),
+            160,
+        )
+        self.assertEqual(
+            dino_game.obstacle_spawn_x_for_terminal_width(60),
+            dino_game.NORMAL_OBSTACLE_SPAWN_X,
+        )
+
     def test_llm_state_forecasts_future_obstacles_without_changing_game_state(self):
         dino_game = importlib.import_module("dino_game")
         rng = dino_game.random.Random(123)
@@ -82,6 +94,18 @@ class GameTuningTest(unittest.TestCase):
             llm_state["forecast_complete_through_frame"],
             game.frame + dino_game.LLM_ACTION_WINDOW_FRAMES * 2 + dino_game.FPS * 2,
         )
+
+    def test_forecast_future_obstacles_uses_game_spawn_position(self):
+        dino_game = importlib.import_module("dino_game")
+        game = dino_game.DinoGame(
+            rng=dino_game.random.Random(123),
+            obstacle_spawn_x=160,
+        )
+
+        forecasts = game.forecast_future_obstacles(max_x=220)
+
+        self.assertTrue(forecasts)
+        self.assertGreaterEqual(forecasts[0].x, 160)
 
     def test_llm_state_forecast_scales_with_requested_window_frames(self):
         dino_game = importlib.import_module("dino_game")

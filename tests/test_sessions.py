@@ -24,6 +24,9 @@ class SessionsTest(unittest.TestCase):
                 return self.keys.pop(0)
             return ord("q")
 
+        def getmaxyx(self):
+            return (24, 80)
+
     def test_replay_selection_restores_nonblocking_game_input_before_playback(self):
         stdscr = self.FakeScreen()
         cli_args = CliArgs(command="replay")
@@ -156,6 +159,39 @@ class SessionsTest(unittest.TestCase):
         self.assertEqual(action, "jump")
         self.assertEqual(session.event_frame, 1)
         self.assertTrue(session.game.jumping)
+
+    def test_manual_session_uses_terminal_width_for_new_obstacle_spawn_x(self):
+        renderer = mock.Mock()
+        stdscr = self.FakeScreen()
+        stdscr.getmaxyx = mock.Mock(return_value=(24, 160))
+
+        session = sessions.ManualSession(
+            stdscr=stdscr,
+            renderer=renderer,
+            cli_args=CliArgs(command="play", mode="manual"),
+        )
+
+        self.assertEqual(session.game.obstacle_spawn_x, 160)
+
+    def test_replay_session_uses_terminal_width_for_replayed_obstacle_spawn_x(self):
+        renderer = mock.Mock()
+        stdscr = self.FakeScreen()
+        stdscr.getmaxyx = mock.Mock(return_value=(24, 160))
+        replay_player = dino_game.ReplayPlayer(
+            seed=123,
+            actions=[],
+            obstacles=[],
+            frames=1,
+        )
+
+        session = sessions.ReplaySession(
+            stdscr=stdscr,
+            renderer=renderer,
+            cli_args=CliArgs(command="replay", mode="manual"),
+            replay_player=replay_player,
+        )
+
+        self.assertEqual(session.game.obstacle_spawn_x, 160)
 
     def test_game_over_does_not_auto_save_replay_until_s_is_pressed(self):
         renderer = mock.Mock()

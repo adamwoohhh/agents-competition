@@ -444,19 +444,28 @@ class Renderer:
 
         # ── Game Over 弹窗 ──
         if game.game_over:
-            replay_line = "║   S = 保存游戏记录       ║"
-            if game_over_save_status == "saved":
-                replay_line = "║        已保存记录        ║"
-            retry_line = "║   C = 失败处重试         ║"
-            msgs = [
-                "╔══════════════════════════╗",
-                "║      G A M E  O V E R   ║",
-                f"║      Score: {game.score:>5d}       ║",
-                replay_line if game_over_save_status else "║                          ║",
-                retry_line if game_over_retry_available else "║                          ║",
-                "║   R = 重新开始 Q = 退出  ║",
-                "╚══════════════════════════╝",
-            ]
+            if agent_name == "Replay":
+                msgs = [
+                    "╔══════════════════════════╗",
+                    "║      G A M E  O V E R   ║",
+                    f"║      Score: {game.score:>5d}       ║",
+                    "║          Q = 退出        ║",
+                    "╚══════════════════════════╝",
+                ]
+            else:
+                replay_line = "║   S = 保存游戏记录       ║"
+                if game_over_save_status == "saved":
+                    replay_line = "║        已保存记录        ║"
+                retry_line = "║   C = 失败处重试         ║"
+                msgs = [
+                    "╔══════════════════════════╗",
+                    "║      G A M E  O V E R   ║",
+                    f"║      Score: {game.score:>5d}       ║",
+                    replay_line if game_over_save_status else "║                          ║",
+                    retry_line if game_over_retry_available else "║                          ║",
+                    "║   R = 重新开始 Q = 退出  ║",
+                    "╚══════════════════════════╝",
+                ]
             mid_y = h // 2 - len(msgs) // 2
             mid_x = w // 2 - len(msgs[0]) // 2
             for i, line in enumerate(msgs):

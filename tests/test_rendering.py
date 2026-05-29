@@ -96,7 +96,7 @@ class CachedFrameRendererTest(unittest.TestCase):
 
 
 class GameOverSavePromptTest(unittest.TestCase):
-    def rendered_text(self, save_status, retry_available=False):
+    def rendered_text(self, save_status, retry_available=False, agent_name=""):
         dino_game = importlib.import_module("dino_game")
 
         class FakeScreen:
@@ -122,7 +122,7 @@ class GameOverSavePromptTest(unittest.TestCase):
         with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
             renderer.draw(
                 game,
-                "",
+                agent_name,
                 game_over_save_status=save_status,
                 game_over_retry_available=retry_available,
             )
@@ -137,6 +137,14 @@ class GameOverSavePromptTest(unittest.TestCase):
     def test_llm_game_over_prompt_shows_recalculate_action(self):
         self.assertIn("C = 失败处重试", self.rendered_text("unsaved", retry_available=True))
         self.assertIn("R = 重新开始", self.rendered_text("unsaved", retry_available=True))
+
+    def test_replay_game_over_prompt_only_shows_exit_action(self):
+        text = self.rendered_text("unsaved", retry_available=True, agent_name="Replay")
+
+        self.assertIn("Q = 退出", text)
+        self.assertNotIn("S = 保存游戏记录", text)
+        self.assertNotIn("C = 失败处重试", text)
+        self.assertNotIn("R = 重新开始", text)
 
 
 class DashboardRendererTest(unittest.TestCase):

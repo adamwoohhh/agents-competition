@@ -52,10 +52,37 @@ class CompetitionModeTest(unittest.TestCase):
                 "frame": 1,
                 "action": {
                     "kind": "bird",
-                    "x": 82.0,
                     "height": 4,
                 },
             }])
+
+    def test_competition_run_uses_current_spawn_position_for_source_obstacles(self):
+        dino_game = importlib.import_module("dino_game")
+        replay = self.make_replay_player(
+            frames=1,
+            obstacles=[{
+                "frame": 1,
+                "action": {
+                    "kind": "bird",
+                    "x": 82,
+                    "height": 4,
+                },
+            }],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            recorder_path = pathlib.Path(tmpdir) / "competition.json"
+            run = dino_game.CompetitionRun(
+                replay,
+                source_replay="replays/source.json",
+                record_path=recorder_path,
+                obstacle_spawn_x=160,
+            )
+
+            run.step("none")
+
+            self.assertEqual(run.history_game.obstacles[0].x, 160)
+            self.assertEqual(run.player_game.obstacles[0].x, 160)
 
     def test_competition_run_uses_seeded_generation_after_source_frames(self):
         dino_game = importlib.import_module("dino_game")

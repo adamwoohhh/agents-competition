@@ -9,6 +9,28 @@ from unittest import mock
 
 
 class ReplayTest(unittest.TestCase):
+    def replay_jump_distance(self, path, playfield_width):
+        dino_game = importlib.import_module("dino_game")
+        player = dino_game.ReplayPlayer.from_file(
+            path,
+            playback_playfield_width=playfield_width,
+        )
+        game = dino_game.DinoGame(
+            rng=dino_game.random.Random(player.seed),
+            obstacle_spawn_x=playfield_width,
+        )
+
+        for frame in range(1, player.max_frame + 1):
+            action = player.action_for_frame(frame)
+            dino_game.apply_game_action(game, action)
+            game.update(replay_obstacles=player.obstacles_for_frame(frame))
+            if action == "jump":
+                state = game.get_state(max_obstacle_count=1)
+                self.assertTrue(state["obstacles"])
+                return state["obstacles"][0]["distance"]
+
+        self.fail("Replay did not jump")
+
     def test_replay_recorder_writes_actions_and_obstacles_without_none_actions(self):
         dino_game = importlib.import_module("dino_game")
 
@@ -31,6 +53,7 @@ class ReplayTest(unittest.TestCase):
             self.assertEqual(data["seed"], 123)
             self.assertEqual(data["mode"], "agent")
             self.assertEqual(data["version"], 3)
+            self.assertEqual(data["screen"]["playfield_width"], 82)
             self.assertEqual(data["frames"], 2)
             self.assertEqual(data["actions"], [
                 {"frame": 2, "action": {"value": "jump"}},
@@ -40,7 +63,6 @@ class ReplayTest(unittest.TestCase):
                     "frame": 2,
                     "action": {
                         "kind": "cactus_group",
-                        "x": 82.0,
                         "height": 0,
                         "plants": ["short", "tall"],
                     },
@@ -120,6 +142,154 @@ class ReplayTest(unittest.TestCase):
             self.assertTrue(player.has_frame(3))
             self.assertFalse(player.has_frame(4))
 
+    def test_replay_player_delays_actions_when_played_on_wider_spawn_position(self):
+        dino_game = importlib.import_module("dino_game")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "run.json"
+            path.write_text(
+                '{"version": 3, "seed": 99, "mode": "manual", "frames": 80, '
+                '"screen": {"playfield_width": 82}, '
+                '"actions": [{"frame": 40, "action": {"value": "jump"}}], '
+                '"obstacles": [{"frame": 10, "action": {"kind": "bird", '
+                '"height": 4}}]}'
+            )
+
+            player = dino_game.ReplayPlayer.from_file(
+                path,
+                playback_playfield_width=160,
+            )
+
+            self.assertEqual(player.action_for_frame(40), "none")
+            self.assertIn("jump", [player.action_for_frame(frame) for frame in range(80, 86)])
+            self.assertGreaterEqual(player.max_frame, 80)
+
+    def test_replay_jump_distance_matches_across_playfield_widths(self):
+        dino_game = importlib.import_module("dino_game")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "run.json"
+            path.write_text(
+                '{"version": 3, "seed": 99, "mode": "manual", "frames": 80, '
+                '"screen": {"playfield_width": 82}, '
+                '"actions": [{"frame": 40, "action": {"value": "jump"}}], '
+                '"obstacles": [{"frame": 10, "action": {"kind": "bird", '
+                '"height": 4}}]}'
+            )
+
+            recorded_distance = self.replay_jump_distance(path, 82)
+
+            for playfield_width in (90, 120, 160):
+                with self.subTest(playfield_width=playfield_width):
+                    replayed_distance = self.replay_jump_distance(
+                        path,
+                        playfield_width,
+                    )
+                    self.assertAlmostEqual(
+                        replayed_distance,
+                        recorded_distance,
+                        delta=dino_game.MAX_SPEED,
+                    )
+
+    def test_replay_end_frame_expands_for_wider_playfield(self):
+        dino_game = importlib.import_module("dino_game")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "run.json"
+            path.write_text(
+                '{"version": 3, "seed": 99, "mode": "manual", "frames": 525, '
+                '"screen": {"playfield_width": 107}, '
+                '"actions": [], '
+                '"obstacles": [{"frame": 478, "action": {"kind": "cactus_group", '
+                '"height": 0, "plants": ["tall"]}}]}'
+            )
+
+            player = dino_game.ReplayPlayer.from_file(
+                path,
+                playback_playfield_width=160,
+            )
+            game = dino_game.DinoGame(
+                rng=dino_game.random.Random(player.seed),
+                obstacle_spawn_x=160,
+            )
+
+            for frame in range(1, player.max_frame + 1):
+                dino_game.apply_game_action(game, player.action_for_frame(frame))
+                game.update(replay_obstacles=player.obstacles_for_frame(frame))
+                if game.game_over:
+                    break
+
+            self.assertGreater(player.max_frame, 525)
+            self.assertTrue(game.game_over)
+
+    def test_wide_replay_retimes_jumps_against_nearest_recorded_obstacle_on_small_playfield(self):
+        dino_game = importlib.import_module("dino_game")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "run.json"
+            path.write_text(
+                '{"version": 3, "seed": 1780031604433970000, '
+                '"mode": "manual", "frames": 261, '
+                '"screen": {"playfield_width": 215}, '
+                '"actions": ['
+                '{"frame": 18, "action": {"value": "jump"}},'
+                '{"frame": 42, "action": {"value": "jump"}},'
+                '{"frame": 66, "action": {"value": "jump"}},'
+                '{"frame": 151, "action": {"value": "jump"}},'
+                '{"frame": 175, "action": {"value": "jump"}},'
+                '{"frame": 220, "action": {"value": "jump"}}], '
+                '"obstacles": ['
+                '{"frame": 40, "action": {"kind": "cactus_group", '
+                '"height": 0, "plants": ["short", "tall"]}},'
+                '{"frame": 70, "action": {"kind": "cactus_group", '
+                '"height": 0, "plants": ["short"]}},'
+                '{"frame": 116, "action": {"kind": "cactus_group", '
+                '"height": 0, "plants": ["tall", "short"]}},'
+                '{"frame": 152, "action": {"kind": "cactus_group", '
+                '"height": 0, "plants": ["short", "short"]}},'
+                '{"frame": 201, "action": {"kind": "bird", "height": 8}},'
+                '{"frame": 245, "action": {"kind": "cactus_group", '
+                '"height": 0, "plants": ["tall"]}}]}'
+            )
+
+            player = dino_game.ReplayPlayer.from_file(
+                path,
+                playback_playfield_width=82,
+            )
+            game = dino_game.DinoGame(
+                rng=dino_game.random.Random(player.seed),
+                obstacle_spawn_x=82,
+            )
+            game_over_frame = None
+            for frame in range(1, player.max_frame + 1):
+                dino_game.apply_game_action(game, player.action_for_frame(frame))
+                game.update(replay_obstacles=player.obstacles_for_frame(frame))
+                if game.game_over:
+                    game_over_frame = frame
+                    break
+
+            self.assertGreater(game_over_frame, 150)
+            self.assertTrue(game.game_over)
+
+    def test_replay_player_uses_legacy_spawn_position_when_screen_metadata_is_missing(self):
+        dino_game = importlib.import_module("dino_game")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "run.json"
+            path.write_text(
+                '{"version": 3, "seed": 99, "mode": "manual", "frames": 80, '
+                '"actions": [{"frame": 40, "action": {"value": "jump"}}], '
+                '"obstacles": [{"frame": 10, "action": {"kind": "bird", '
+                '"x": 82, "height": 4}}]}'
+            )
+
+            player = dino_game.ReplayPlayer.from_file(
+                path,
+                playback_playfield_width=160,
+            )
+
+            self.assertIn("jump", [player.action_for_frame(frame) for frame in range(80, 86)])
+
     def test_replay_player_converts_legacy_events_to_actions_and_obstacles(self):
         dino_game = importlib.import_module("dino_game")
 
@@ -176,9 +346,23 @@ class ReplayTest(unittest.TestCase):
         self.assertEqual(restored.height, 0)
         self.assertEqual(restored.plants, ("short", "tall"))
 
+    def test_obstacle_data_restores_at_current_spawn_position(self):
+        dino_game = importlib.import_module("dino_game")
+        obstacle = dino_game.obstacle_from_action_data(
+            {
+                "kind": "bird",
+                "x": 82,
+                "height": 4,
+            },
+            spawn_x=160,
+        )
+
+        self.assertEqual(obstacle.x, 160)
+        self.assertEqual(obstacle.height, 4)
+
     def test_game_update_uses_replay_obstacles_instead_of_random_spawn(self):
         dino_game = importlib.import_module("dino_game")
-        game = dino_game.DinoGame()
+        game = dino_game.DinoGame(obstacle_spawn_x=160)
         game.spawn_timer = 0
 
         spawned = game.update(replay_obstacles=[{
@@ -189,6 +373,7 @@ class ReplayTest(unittest.TestCase):
 
         self.assertEqual(len(spawned), 1)
         self.assertEqual(game.obstacles[0].kind, "bird")
+        self.assertEqual(game.obstacles[0].x, 160)
         self.assertEqual(game.obstacles[0].height, 4)
 
     def test_default_replay_path_uses_replay_directory_and_mode(self):

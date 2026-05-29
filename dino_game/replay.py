@@ -6,7 +6,14 @@ import os
 import random
 import time
 
-from .constants import NORMAL_OBSTACLE_SPAWN_X, REPLAY_DIR
+from .constants import (
+    DINO_COL,
+    INITIAL_SPEED,
+    MAX_SPEED,
+    NORMAL_OBSTACLE_SPAWN_X,
+    REPLAY_DIR,
+    SPEED_ACCELERATION,
+)
 from .engine import (
     DinoGame,
     Obstacle,
@@ -274,12 +281,17 @@ class ReplayRecorder:
             seed: int,
             mode: str = "manual",
             competitive: bool = False,
-            source_replay: str | None = None):
+            source_replay: str | None = None,
+            playfield_width: float = NORMAL_OBSTACLE_SPAWN_X,
+            obstacle_spawn_x: float | None = None):
         self.path = path
         self.seed = seed
         self.mode = mode
         self.competitive = competitive
         self.source_replay = source_replay
+        if obstacle_spawn_x is not None:
+            playfield_width = obstacle_spawn_x
+        self.playfield_width = playfield_width
         self.actions: list[dict] = []
         self.obstacles: list[dict] = []
         self.llm_usage: dict | None = None
@@ -320,6 +332,9 @@ class ReplayRecorder:
             "seed": self.seed,
             "mode": self.mode,
             "frames": self.frames,
+            "screen": {
+                "playfield_width": self.playfield_width,
+            },
             "actions": self.actions,
             "obstacles": self.obstacles,
         }
@@ -344,33 +359,201 @@ class ReplayPlayer:
             actions: list[dict],
             obstacles: list[dict],
             mode: str = "manual",
-            frames: int | None = None):
+            frames: int | None = None,
+            recorded_playfield_width: float = NORMAL_OBSTACLE_SPAWN_X,
+            playback_playfield_width: float | None = None,
+            recorded_spawn_x: float | None = None,
+            playback_spawn_x: float | None = None):
         self.seed = seed
         self.mode = mode
-        self.action_events = actions
+        if recorded_spawn_x is not None:
+            recorded_playfield_width = recorded_spawn_x
+        if playback_spawn_x is not None:
+            playback_playfield_width = playback_spawn_x
+        self.recorded_playfield_width = recorded_playfield_width
+        self.playback_playfield_width = playback_playfield_width
+        self.action_events = self._retime_actions(
+            actions,
+            obstacles,
+            recorded_playfield_width,
+            playback_playfield_width,
+        )
         self.obstacle_events = obstacles
         self.actions = [
             event.get("action", {}).get("value", event.get("action"))
-            for event in actions
+            for event in self.action_events
         ]
         self.actions_by_frame = {
             event["frame"]: event.get("action", {}).get("value", event.get("action"))
-            for event in actions
+            for event in self.action_events
         }
         self.obstacles_by_frame: dict[int, list[dict]] = {}
         for event in obstacles:
             self.obstacles_by_frame.setdefault(event["frame"], []).append(event["action"])
-        last_action_frame = max((event["frame"] for event in actions), default=0)
+        last_action_frame = max((event["frame"] for event in self.action_events), default=0)
         last_obstacle_frame = max((event["frame"] for event in obstacles), default=0)
-        self.max_frame = max(frames or 0, last_action_frame, last_obstacle_frame)
+        obstacle_frames = sorted(event["frame"] for event in obstacles)
+        playback_frames = 0
+        if frames is not None:
+            playback_frames = self._retimed_frame(
+                frames,
+                obstacle_frames,
+                recorded_playfield_width,
+                playback_playfield_width,
+                keep_unrepresentable=True,
+            )
+        self.max_frame = max(playback_frames, last_action_frame, last_obstacle_frame)
         self.index = 0
 
+    @staticmethod
+    def _speed_for_frame(frame: int) -> float:
+        return min(MAX_SPEED, INITIAL_SPEED + frame * SPEED_ACCELERATION)
+
     @classmethod
-    def from_file(cls, path):
+    def _obstacle_displacement_through_frame(
+            cls,
+            obstacle_frame: int,
+            frame: int) -> float:
+        if frame <= obstacle_frame:
+            return 0.0
+        return sum(
+            cls._speed_for_frame(move_frame)
+            for move_frame in range(obstacle_frame + 1, frame + 1)
+        )
+
+    @classmethod
+    def _frame_for_obstacle_displacement(
+            cls,
+            obstacle_frame: int,
+            target_displacement: float) -> int:
+        if target_displacement <= 0:
+            return obstacle_frame
+
+        frame = obstacle_frame
+        displacement = 0.0
+        previous_frame = frame
+        previous_displacement = displacement
+        while displacement < target_displacement:
+            previous_frame = frame
+            previous_displacement = displacement
+            frame += 1
+            displacement += cls._speed_for_frame(frame)
+
+        if abs(previous_displacement - target_displacement) <= abs(
+                displacement - target_displacement):
+            return previous_frame
+        return frame
+
+    @classmethod
+    def _nearest_recorded_obstacle_frame(
+            cls,
+            frame: int,
+            obstacle_frames: list[int],
+            recorded_playfield_width: float) -> tuple[int, float, float] | None:
+        nearest: tuple[int, float, float] | None = None
+        for obstacle_frame in obstacle_frames:
+            if obstacle_frame > frame:
+                continue
+            displacement = cls._obstacle_displacement_through_frame(
+                obstacle_frame,
+                frame,
+            )
+            distance = recorded_playfield_width - DINO_COL - displacement
+            if distance < 0:
+                continue
+            if nearest is None or distance < nearest[1]:
+                nearest = (obstacle_frame, distance, displacement)
+        return nearest
+
+    @classmethod
+    def _retimed_action_frame(
+            cls,
+            frame: int,
+            obstacle_frames: list[int],
+            recorded_playfield_width: float,
+            playback_playfield_width: float | None) -> int:
+        retimed = cls._retimed_frame(
+            frame,
+            obstacle_frames,
+            recorded_playfield_width,
+            playback_playfield_width,
+            keep_unrepresentable=True,
+        )
+        return frame if retimed is None else retimed
+
+    @classmethod
+    def _retimed_frame(
+            cls,
+            frame: int,
+            obstacle_frames: list[int],
+            recorded_playfield_width: float,
+            playback_playfield_width: float | None,
+            keep_unrepresentable: bool = False) -> int | None:
+        if (
+                playback_playfield_width is None
+                or playback_playfield_width == recorded_playfield_width):
+            return frame
+        nearest = cls._nearest_recorded_obstacle_frame(
+            frame,
+            obstacle_frames,
+            recorded_playfield_width,
+        )
+        if nearest is None:
+            return frame
+
+        obstacle_frame, _recorded_distance, recorded_displacement = nearest
+        target_displacement = (
+            recorded_displacement
+            + playback_playfield_width
+            - recorded_playfield_width
+        )
+        if target_displacement < 0:
+            return frame if keep_unrepresentable else None
+        return cls._frame_for_obstacle_displacement(
+            obstacle_frame,
+            target_displacement,
+        )
+
+    @classmethod
+    def _retime_actions(
+            cls,
+            actions: list[dict],
+            obstacles: list[dict],
+            recorded_playfield_width: float,
+            playback_playfield_width: float | None) -> list[dict]:
+        obstacle_frames = sorted(event["frame"] for event in obstacles)
+        retimed = []
+        for event in actions:
+            retimed_event = dict(event)
+            retimed_frame = cls._retimed_frame(
+                event["frame"],
+                obstacle_frames,
+                recorded_playfield_width,
+                playback_playfield_width,
+            )
+            if retimed_frame is None:
+                continue
+            retimed_event["frame"] = retimed_frame
+            retimed.append(retimed_event)
+        return retimed
+
+    @classmethod
+    def from_file(
+            cls,
+            path,
+            playback_playfield_width: float | None = None,
+            playback_spawn_x: float | None = None):
         data = load_replay_file(path)
         actions = data.get("actions")
         obstacles = data.get("obstacles", [])
         frames = data.get("frames")
+        screen = data.get("screen", {})
+        recorded_playfield_width = screen.get(
+            "playfield_width",
+            screen.get("obstacle_spawn_x", NORMAL_OBSTACLE_SPAWN_X),
+        )
+        if playback_spawn_x is not None:
+            playback_playfield_width = playback_spawn_x
 
         if data.get("events") is not None:
             actions = []
@@ -413,6 +596,8 @@ class ReplayPlayer:
             obstacles=list(obstacles or []),
             mode=data.get("mode", "manual"),
             frames=frames,
+            recorded_playfield_width=recorded_playfield_width,
+            playback_playfield_width=playback_playfield_width,
         )
 
     def action_for_frame(self, frame: int) -> str:
@@ -452,16 +637,22 @@ def start_recording_run(
         record_path: str | None,
         run_index: int,
         directory: str = REPLAY_DIR,
-        seed: int | None = None) -> tuple[DinoGame, ReplayRecorder]:
+        seed: int | None = None,
+        obstacle_spawn_x: float = NORMAL_OBSTACLE_SPAWN_X) -> tuple[DinoGame, ReplayRecorder]:
     """启动一局新游戏，并为这一局创建独立 replay recorder。"""
     if seed is None:
         seed = time.time_ns()
     game = DinoGame(
         rng=random.Random(seed),
-        obstacle_spawn_x=NORMAL_OBSTACLE_SPAWN_X,
+        obstacle_spawn_x=obstacle_spawn_x,
     )
     path = record_path_for_run(record_path, mode, seed, run_index, directory)
-    return game, ReplayRecorder(path, seed, mode=mode)
+    return game, ReplayRecorder(
+        path,
+        seed,
+        mode=mode,
+        playfield_width=obstacle_spawn_x,
+    )
 
 def finish_recording(recorder: ReplayRecorder | None):
     """Save the current replay recorder; repeated calls do not rewrite."""

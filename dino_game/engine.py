@@ -156,21 +156,22 @@ def obstacle_to_action_data(obstacle: Obstacle) -> dict:
     """把障碍物转换成 replay 记录中的 action 数据。"""
     data = {
         "kind": obstacle.kind,
-        "x": float(obstacle.x),
         "height": obstacle.height,
     }
     if obstacle.kind == "cactus_group":
         data["plants"] = list(obstacle.plants or ())
     return data
 
-def obstacle_from_action_data(data: dict) -> Obstacle:
+def obstacle_from_action_data(
+        data: dict,
+        spawn_x: float = NORMAL_OBSTACLE_SPAWN_X) -> Obstacle:
     """从 replay 记录中的 action 数据还原障碍物。"""
     plants = data.get("plants")
     if plants is not None:
         plants = tuple(plants)
     return Obstacle(
         data["kind"],
-        data.get("x", 82),
+        spawn_x,
         data.get("height", 0),
         plants=plants,
     )
@@ -337,7 +338,7 @@ class DinoGame:
         speed = self.speed
         spawn_timer = self.spawn_timer
         travelled = 0.0
-        max_travel = max(0.0, max_x - NORMAL_OBSTACLE_SPAWN_X)
+        max_travel = max(0.0, max_x - self.obstacle_spawn_x)
 
         while travelled <= max_travel or (
                 through_frame is not None
@@ -350,7 +351,7 @@ class DinoGame:
             if spawn_timer <= 0:
                 obstacle = random_obstacle_for_score(
                     score,
-                    NORMAL_OBSTACLE_SPAWN_X + travelled,
+                    self.obstacle_spawn_x + travelled,
                     forecast_rng,
                 )
                 obstacle.forecast_frame = self.frame + (score - self.score)
@@ -404,7 +405,10 @@ class DinoGame:
         # ── 3. 生成新障碍物 ──
         if replay_obstacles is not None:
             for obstacle_data in replay_obstacles:
-                obstacle = obstacle_from_action_data(obstacle_data)
+                obstacle = obstacle_from_action_data(
+                    obstacle_data,
+                    spawn_x=self.obstacle_spawn_x,
+                )
                 self.obstacles.append(obstacle)
                 spawned_obstacles.append(obstacle)
         else:
@@ -418,7 +422,7 @@ class DinoGame:
         # ── 4. 装饰: 云朵 ──
         if self.rng.random() < 0.02:        # 2% 概率每帧生成一朵云
             self.clouds.append({
-                "x": 82.0,
+                "x": float(self.obstacle_spawn_x),
                 "y": self.rng.randint(2, 8),  # 云在屏幕上方随机行
             })
         for c in self.clouds:

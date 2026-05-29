@@ -15,6 +15,7 @@ from .constants import (
     LLM_LIFELINE_REWIND_FRAMES,
     LLM_LIFELINE_REWIND_TEXT,
     LLM_LOADING_TEXT,
+    obstacle_spawn_x_for_terminal_width,
 )
 from .engine import DinoGame, apply_game_action
 from .input import (
@@ -95,20 +96,37 @@ def restore_game_input_mode(stdscr):
     stdscr.timeout(FRAME_MS)
 
 
+def terminal_width(stdscr) -> int | None:
+    try:
+        size = stdscr.getmaxyx()
+    except Exception:
+        return None
+    if not isinstance(size, tuple) or len(size) < 2:
+        return None
+    return size[1]
+
+
 class CompetitionSession:
     def __init__(self, stdscr, renderer: Renderer, cli_args: CliArgs, replay_path: str):
         self.stdscr = stdscr
         self.renderer = renderer
         self.cli_args = cli_args
         self.replay_path = replay_path
+        self.obstacle_spawn_x = obstacle_spawn_x_for_terminal_width(
+            terminal_width(stdscr)
+        )
 
     def run(self):
-        replay_player = ReplayPlayer.from_file(self.replay_path)
+        replay_player = ReplayPlayer.from_file(
+            self.replay_path,
+            playback_playfield_width=self.obstacle_spawn_x,
+        )
         record_path = default_replay_path("competitive", replay_player.seed)
         competition = CompetitionRun(
             replay_player,
             source_replay=self.replay_path,
             record_path=record_path,
+            obstacle_spawn_x=self.obstacle_spawn_x,
         )
         run_competition_loop(self.stdscr, self.renderer, competition)
 
@@ -125,6 +143,9 @@ class PlaySession:
         self.cli_args = cli_args
         self.replay_player = replay_player
         self.mode = cli_args.mode
+        self.obstacle_spawn_x = obstacle_spawn_x_for_terminal_width(
+            terminal_width(stdscr)
+        )
         self.run_index = 1
         self.manual_input = ManualInputState()
         self.pause_state = PauseState()
@@ -144,11 +165,18 @@ class PlaySession:
 
     def _new_game(self):
         if self.replay_player:
-            return DinoGame(rng=random.Random(self.replay_player.seed)), None
+            return (
+                DinoGame(
+                    rng=random.Random(self.replay_player.seed),
+                    obstacle_spawn_x=self.obstacle_spawn_x,
+                ),
+                None,
+            )
         return start_recording_run(
             self.mode,
             None,
             self.run_index,
+            obstacle_spawn_x=self.obstacle_spawn_x,
         )
 
     def _apply_high_score(self):
@@ -591,11 +619,15 @@ def session_for_cli_args(stdscr, cli_args: CliArgs):
         if not replay_path:
             return None
         restore_game_input_mode(stdscr)
+        obstacle_spawn_x = obstacle_spawn_x_for_terminal_width(terminal_width(stdscr))
         return ReplaySession(
             stdscr,
             renderer,
             cli_args,
-            ReplayPlayer.from_file(replay_path),
+            ReplayPlayer.from_file(
+                replay_path,
+                playback_playfield_width=obstacle_spawn_x,
+            ),
         )
 
     if cli_args.mode == "manual":

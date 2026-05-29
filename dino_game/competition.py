@@ -4,6 +4,7 @@ import os
 import random
 import time
 
+from .constants import NORMAL_OBSTACLE_SPAWN_X
 from .engine import DinoGame, apply_game_action
 from .input import ManualInputState, manual_action_from_key, next_pause_state, PauseState
 from .replay import ReplayPlayer, ReplayRecorder, finish_recording
@@ -16,11 +17,18 @@ class CompetitionRun:
             self,
             replay_player: ReplayPlayer,
             source_replay: str,
-            record_path):
+            record_path,
+            obstacle_spawn_x: float = NORMAL_OBSTACLE_SPAWN_X):
         self.replay_player = replay_player
         self.source_replay = os.fspath(source_replay)
-        self.history_game = DinoGame(rng=random.Random(replay_player.seed))
-        self.player_game = DinoGame(rng=random.Random(replay_player.seed))
+        self.history_game = DinoGame(
+            rng=random.Random(replay_player.seed),
+            obstacle_spawn_x=obstacle_spawn_x,
+        )
+        self.player_game = DinoGame(
+            rng=random.Random(replay_player.seed),
+            obstacle_spawn_x=obstacle_spawn_x,
+        )
         self.player_game.high_score = load_high_score("competitive")
         self.recorder = ReplayRecorder(
             record_path,
@@ -28,6 +36,7 @@ class CompetitionRun:
             mode="competitive",
             competitive=True,
             source_replay=self.source_replay,
+            obstacle_spawn_x=obstacle_spawn_x,
         )
         self.frame = 0
         self.history_finished = replay_player.max_frame <= 0
