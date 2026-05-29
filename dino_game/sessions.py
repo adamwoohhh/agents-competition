@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import curses
 import random
 import time
 
@@ -58,13 +59,34 @@ class DashboardSession:
     def __init__(self, stdscr, renderer: Renderer):
         self.stdscr = stdscr
         self.renderer = renderer
+        self.active_mode_index = 0
+
+    def _dashboard_modes(self, summary: list[dict]) -> list[str]:
+        modes = []
+        for window in summary:
+            for mode in window.get("modes", {}):
+                if mode not in modes:
+                    modes.append(mode)
+        return modes
 
     def run(self):
         while True:
+            summary = aggregate_game_records(load_game_records())
+            modes = self._dashboard_modes(summary)
+            if modes:
+                self.active_mode_index %= len(modes)
+                active_mode = modes[self.active_mode_index]
+            else:
+                self.active_mode_index = 0
+                active_mode = None
+            self.renderer.draw_dashboard(summary, active_mode=active_mode)
             key = self.stdscr.getch()
             if key in (ord("q"), ord("Q")):
                 return
-            self.renderer.draw_dashboard(aggregate_game_records(load_game_records()))
+            if key == curses.KEY_RIGHT and modes:
+                self.active_mode_index = (self.active_mode_index + 1) % len(modes)
+            elif key == curses.KEY_LEFT and modes:
+                self.active_mode_index = (self.active_mode_index - 1) % len(modes)
 
 
 def restore_game_input_mode(stdscr):

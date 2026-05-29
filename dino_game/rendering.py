@@ -266,25 +266,24 @@ class Renderer:
             self.safe_addstr(y, cursor, text, attr)
             cursor += len(text)
 
-    def draw_dashboard(self, summary: list[dict], now: float | None = None):
+    def draw_dashboard(
+            self,
+            summary: list[dict],
+            active_mode: str | None = None,
+            now: float | None = None):
         """Draw the animated score and token usage dashboard."""
         self.scr.erase()
         h, w = self.scr.getmaxyx()
         animation_time = time.monotonic() if now is None else now
 
-        title = "DINO"
-        subtitle = "Score Dashboard"
-        title_x = max(2, w // 2 - len(title) // 2)
-        self.safe_addstr(1, title_x, title, curses.A_BOLD | curses.color_pair(1))
-        self.safe_addstr(
-            2,
-            max(2, w // 2 - len(subtitle) // 2),
-            subtitle,
-            curses.color_pair(4) | curses.A_DIM,
-        )
-
         dino = DINO_RUN_1 if int(animation_time / 0.25) % 2 == 0 else DINO_RUN_2
-        dino_x = max(2, min(w - 12, title_x - 16))
+        logo_width = max(len(line) for line in DINO_LOGO)
+        dino_width = max(len(line) for line in dino)
+        banner_width = dino_width + 4 + logo_width
+        dino_x = max(2, w // 2 - banner_width // 2)
+        logo_x = dino_x + dino_width + 4
+        for row, line in enumerate(DINO_LOGO):
+            self.safe_addstr(1 + row, logo_x, line, curses.A_BOLD | curses.color_pair(1))
         for row, line in enumerate(dino):
             self.safe_addstr(1 + row, dino_x, line, curses.A_BOLD | curses.color_pair(1))
 
@@ -293,50 +292,54 @@ class Renderer:
         ground = (pattern * ((w // len(pattern)) + 2))[:max(0, w - 1)]
         self.safe_addstr(ground_y, 0, ground, curses.color_pair(5) | curses.A_DIM)
 
-        table_y = ground_y + 2
-        headers = ("Window", "Mode", "Score", "Tokens")
-        widths = (16, 14, 12, 10)
-        header = (
-            f"{headers[0]:<{widths[0]}}"
-            f"{headers[1]:<{widths[1]}}"
-            f"{headers[2]:>{widths[2]}}  "
-            f"{headers[3]:>{widths[3]}}"
-        )
-        self.safe_addstr(table_y, 2, header, curses.A_BOLD | curses.color_pair(3))
-        self.safe_addstr(table_y + 1, 2, "-" * len(header), curses.A_DIM)
-
-        row_y = table_y + 2
-        any_rows = False
+        modes = []
         for window in summary:
-            label = str(window.get("label", ""))
-            modes = window.get("modes", {})
-            if not modes:
-                continue
-            for mode in sorted(modes):
-                totals = modes[mode]
-                line = (
-                    f"{label:<{widths[0]}}"
-                    f"{mode:<{widths[1]}}"
-                    f"{int(totals.get('score', 0)):>{widths[2]}}  "
-                    f"{format_compact_tokens(totals.get('total_tokens', 0)):>{widths[3]}}"
-                )
-                self.safe_addstr(row_y, 2, line, curses.color_pair(5))
-                row_y += 1
-                any_rows = True
-                if row_y >= h - 2:
-                    break
-            if row_y >= h - 2:
-                break
+            for mode in window.get("modes", {}):
+                if mode not in modes:
+                    modes.append(mode)
 
-        if not any_rows:
+        content_y = ground_y + 2
+        if not modes:
             self.safe_addstr(
-                table_y + 3,
+                content_y + 1,
                 2,
                 "No completed games recorded yet.",
                 curses.color_pair(6) | curses.A_DIM,
             )
+            self.safe_addstr(h - 1, 2, "Q 退出", curses.A_DIM)
+            self.scr.refresh()
+            return
 
-        self.safe_addstr(h - 1, 2, "Q 退出", curses.A_DIM)
+        selected_mode = active_mode if active_mode in modes else modes[0]
+        tabs = "\t".join(
+            f"[{mode}]" if mode == selected_mode else mode
+            for mode in modes
+        )
+        self.safe_addstr(content_y, 2, tabs, curses.A_BOLD | curses.color_pair(3))
+
+        row_y = content_y + 2
+        range_width = max(12, *(len(str(window.get("label", ""))) for window in summary))
+        score_width = 6
+        token_width = 8
+        for window in summary:
+            label = str(window.get("label", ""))
+            totals = window.get("modes", {}).get(
+                selected_mode,
+                {"score": 0, "total_tokens": 0},
+            )
+            total_tokens = int(totals.get("total_tokens", 0) or 0)
+            line = f"{label:<{range_width}} | 累计得分 {int(totals.get('score', 0)):>{score_width}}"
+            if total_tokens > 0:
+                line = (
+                    f"{line} | 累计消耗token "
+                    f"{format_compact_tokens(total_tokens):>{token_width}}"
+                )
+            self.safe_addstr(row_y, 2, line, curses.color_pair(5))
+            row_y += 1
+            if row_y >= h - 2:
+                break
+
+        self.safe_addstr(h - 1, 2, "←/→ 切换 tab | Q 退出", curses.A_DIM)
         self.scr.refresh()
 
     def draw(

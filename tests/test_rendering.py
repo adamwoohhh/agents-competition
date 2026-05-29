@@ -156,17 +156,17 @@ class DashboardRendererTest(unittest.TestCase):
         def refresh(self):
             pass
 
-    def rendered_text(self, summary):
+    def rendered_text(self, summary, active_mode=None):
         dino_game = importlib.import_module("dino_game")
         renderer = dino_game.Renderer.__new__(dino_game.Renderer)
         renderer.scr = self.FakeScreen()
 
         with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
-            renderer.draw_dashboard(summary, now=0.0)
+            renderer.draw_dashboard(summary, active_mode=active_mode, now=0.0)
 
         return "\n".join(text for _, _, text, _ in renderer.scr.calls)
 
-    def test_draw_dashboard_renders_banner_and_mode_totals(self):
+    def test_draw_dashboard_renders_tabs_and_selected_mode_list(self):
         text = self.rendered_text([
             {
                 "label": "Today",
@@ -181,17 +181,97 @@ class DashboardRendererTest(unittest.TestCase):
                     "llm": {"score": 56, "total_tokens": 2_500_000},
                 },
             },
-        ])
+        ], active_mode="manual")
 
-        self.assertIn("DINO", text)
+        self.assertIn(importlib.import_module("dino_game").DINO_LOGO[0], text)
         self.assertIn("▄███▄", text)
+        self.assertIn("[manual]\tllm", text)
         self.assertIn("Today", text)
         self.assertIn("All time", text)
         self.assertIn("manual", text)
         self.assertIn("llm", text)
-        self.assertIn("1.5K", text)
-        self.assertIn("2.5M", text)
+        self.assertIn("Today        | 累计得分     12", text)
+        self.assertNotIn("累计消耗token 0", text)
+        self.assertNotIn("1.5K", text)
+        self.assertNotIn("2.5M", text)
+        self.assertNotIn("Window", text)
+        self.assertNotIn("Tokens", text)
         self.assertIn("Q 退出", text)
+
+    def test_draw_dashboard_renders_token_only_when_selected_mode_has_usage(self):
+        text = self.rendered_text([
+            {
+                "label": "Today",
+                "modes": {
+                    "manual": {"score": 12, "total_tokens": 0},
+                    "llm": {"score": 34, "total_tokens": 1500},
+                },
+            },
+            {
+                "label": "All time",
+                "modes": {
+                    "llm": {"score": 56, "total_tokens": 2_500_000},
+                },
+            },
+        ], active_mode="llm")
+
+        self.assertIn("manual\t[llm]", text)
+        self.assertIn("Today        | 累计得分     34 | 累计消耗token     1.5K", text)
+        self.assertIn("All time     | 累计得分     56 | 累计消耗token     2.5M", text)
+        self.assertNotIn("Today | 累计得分 12", text)
+
+    def test_draw_dashboard_aligns_list_columns_and_shows_tab_hint(self):
+        text = self.rendered_text([
+            {
+                "label": "Today",
+                "modes": {"llm": {"score": 34, "total_tokens": 1500}},
+            },
+            {
+                "label": "Last 90 days",
+                "modes": {"llm": {"score": 1234, "total_tokens": 2_500_000}},
+            },
+        ], active_mode="llm")
+
+        self.assertIn("Today        | 累计得分     34 | 累计消耗token     1.5K", text)
+        self.assertIn("Last 90 days | 累计得分   1234 | 累计消耗token     2.5M", text)
+        self.assertIn("←/→ 切换 tab | Q 退出", text)
+
+    def test_draw_dashboard_banner_uses_six_row_pixel_logo_without_subtitle(self):
+        dino_game = importlib.import_module("dino_game")
+        renderer = dino_game.Renderer.__new__(dino_game.Renderer)
+        renderer.scr = self.FakeScreen()
+
+        with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
+            renderer.draw_dashboard([
+                {"label": "Today", "modes": {"manual": {"score": 12, "total_tokens": 0}}},
+            ], active_mode="manual", now=0.0)
+
+        calls = renderer.scr.calls
+        logo_rows = [y for y, _, text, _ in calls if text in dino_game.DINO_LOGO]
+        sprite_rows = [y for y, _, text, _ in calls if "▄███▄" in text]
+
+        self.assertEqual(len(dino_game.DINO_LOGO), 6)
+        self.assertEqual(logo_rows, list(range(sprite_rows[0], sprite_rows[0] + 6)))
+        self.assertNotIn("DINO", "\n".join(text for _, _, text, _ in calls))
+        self.assertNotIn("Score Dashboard", "\n".join(text for _, _, text, _ in calls))
+
+    def test_draw_dashboard_banner_places_dino_left_of_full_dino_logo(self):
+        dino_game = importlib.import_module("dino_game")
+        renderer = dino_game.Renderer.__new__(dino_game.Renderer)
+        renderer.scr = self.FakeScreen()
+
+        with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
+            renderer.draw_dashboard([
+                {"label": "Today", "modes": {"manual": {"score": 12, "total_tokens": 0}}},
+            ], active_mode="manual", now=0.0)
+
+        calls = renderer.scr.calls
+        logo_top = next((y, x, text) for y, x, text, _ in calls if text == dino_game.DINO_LOGO[0])
+        dino_top = next((y, x, text) for y, x, text, _ in calls if "▄███▄" in text)
+
+        self.assertLess(dino_top[1], logo_top[1])
+        self.assertEqual(dino_game.DINO_LOGO[0], "████▄  █  █  █   ██   ")
+        self.assertEqual(dino_game.DINO_LOGO[1], "█   █  █  ██ █  █  █  ")
 
     def test_draw_dashboard_renders_empty_state(self):
         text = self.rendered_text([

@@ -114,6 +114,35 @@ class SessionsTest(unittest.TestCase):
         self.assertIsInstance(session, sessions.DashboardSession)
         renderer_class.assert_called_once_with(stdscr)
 
+    def test_dashboard_session_switches_tabs_with_left_and_right_keys(self):
+        stdscr = self.FakeScreen(keys=[
+            dino_game.curses.KEY_RIGHT,
+            dino_game.curses.KEY_LEFT,
+            ord("q"),
+        ])
+        renderer = mock.Mock()
+        summary = [
+            {
+                "label": "Today",
+                "modes": {
+                    "manual": {"score": 12, "total_tokens": 0},
+                    "llm": {"score": 34, "total_tokens": 1500},
+                },
+            },
+        ]
+
+        with (
+            mock.patch("dino_game.sessions.load_game_records", return_value=[]),
+            mock.patch("dino_game.sessions.aggregate_game_records", return_value=summary),
+        ):
+            session = sessions.DashboardSession(stdscr, renderer)
+            session.run()
+
+        self.assertEqual(
+            [call.kwargs["active_mode"] for call in renderer.draw_dashboard.call_args_list],
+            ["manual", "llm", "manual"],
+        )
+
     def test_manual_session_next_action_uses_manual_input_helper(self):
         renderer = mock.Mock()
         session = sessions.ManualSession(

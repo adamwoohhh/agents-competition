@@ -68,7 +68,6 @@ dino config +reset
 
 # 选择历史运行记录并重放
 dino replay
-dino replay run.json
 
 # 管理历史运行记录
 dino replay +list
@@ -82,26 +81,6 @@ dino compete run.json
 dino help
 dino play --help
 dino --version
-```
-
-也可以直接运行源码：
-
-```bash
-python3 -m dino_game.cli
-python3 -m dino_game.cli play
-python3 -m dino_game.cli play --auto
-python3 -m dino_game.cli play --llm
-python3 -m dino_game.cli play --llm --debug
-python3 -m dino_game.cli dashboard
-python3 -m dino_game.cli config
-python3 -m dino_game.cli config +setup
-python3 -m dino_game.cli config +reset
-python3 -m dino_game.cli replay
-python3 -m dino_game.cli replay run.json
-python3 -m dino_game.cli replay +list
-python3 -m dino_game.cli replay +clear
-python3 -m dino_game.cli compete
-python3 -m dino_game.cli compete run.json
 ```
 
 ## 模式
