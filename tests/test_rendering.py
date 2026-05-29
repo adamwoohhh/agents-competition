@@ -243,14 +243,16 @@ class GameOverSavePromptTest(unittest.TestCase):
 
 class DashboardRendererTest(unittest.TestCase):
     class FakeScreen:
-        def __init__(self):
+        def __init__(self, height=32, width=120):
+            self.height = height
+            self.width = width
             self.calls = []
 
         def erase(self):
             pass
 
         def getmaxyx(self):
-            return (32, 120)
+            return (self.height, self.width)
 
         def addstr(self, y, x, text, attr=0):
             self.calls.append((y, x, text, attr))
@@ -382,3 +384,35 @@ class DashboardRendererTest(unittest.TestCase):
         ])
 
         self.assertIn("No completed games recorded yet.", text)
+
+    def test_draw_dashboard_centers_content_on_large_screen(self):
+        dino_game = importlib.import_module("dino_game")
+        renderer = dino_game.Renderer.__new__(dino_game.Renderer)
+        renderer.scr = self.FakeScreen(height=48, width=160)
+
+        with mock.patch.object(dino_game.curses, "color_pair", side_effect=lambda value: value):
+            renderer.draw_dashboard([
+                {
+                    "label": "Today",
+                    "modes": {"llm": {"score": 34, "total_tokens": 1500}},
+                },
+                {
+                    "label": "Last 90 days",
+                    "modes": {"llm": {"score": 1234, "total_tokens": 2_500_000}},
+                },
+            ], active_mode="llm", now=0.0)
+
+        calls = renderer.scr.calls
+        logo_top = next((y, x, text) for y, x, text, _ in calls if text == dino_game.DINO_LOGO[0])
+        tab = next((y, x, text) for y, x, text, _ in calls if text == "[llm]")
+        first_row = next((y, x, text) for y, x, text, _ in calls if text.startswith("Today"))
+        ground = next((y, x, text) for y, x, text, _ in calls if text.startswith("▁"))
+
+        self.assertEqual(logo_top[0], 17)
+        self.assertEqual(tab[0], 26)
+        self.assertEqual(first_row[0], 28)
+        self.assertGreater(logo_top[1], 40)
+        self.assertEqual(tab[1], (160 - len("[llm]")) // 2)
+        self.assertEqual(ground[1], 0)
+        self.assertEqual(len(ground[2]), 159)
+        self.assertGreater(first_row[1], 40)

@@ -1,6 +1,6 @@
 # DINO: 一款可以让 AI 玩的终端游戏
 
-![](./docs/readme/ac-playing-2.gif)
+![](./docs/readme/ac-header.gif)
 
 ## 安装
 
@@ -20,12 +20,17 @@ dino
 
 ## 快速开玩
 
-手动模式。
+### 手动玩
+
 ```bash
 dino # 或者 `dino play`
 ```
 
-AI 模式，不指定 provider。
+### AI 玩
+
+![](./docs/readme/ac-llm--lay.gif)
+
+1.AI 模式，不指定 provider。
 ```bash
 # 1. 完成安装
 # 2. 判断执行模式：
@@ -37,7 +42,7 @@ AI 模式，不指定 provider。
 dino play --llm
 ```
 
-AI 模式，指定 provider 为本地 Codex。
+2. AI 模式，指定 provider 为本地 Codex。
  ```bash
 # 1. 安装完成
 # 2. 判断本地 Codex 是否安装（符合版本要求）
@@ -47,7 +52,7 @@ AI 模式，指定 provider 为本地 Codex。
 dino play --llm codex
  ```
 
-AI 模式，指定 provider 为 API (OpenAI Response)。
+3. AI 模式，指定 provider 为 API (OpenAI Response)。
  ```bash
 # 1. 安装完成，开始玩
 # 2. 判断本地配置文件：
@@ -61,15 +66,27 @@ dino play --llm api
 
 ### 保存游戏记录
 
-手动模式和 LLM 结束后，可以选择保存本局记录。后续可以回放或者在竞技模式中使用。
+结束一局游戏后，可以选择保存本局记录。后续可以回放或者在竞技模式中使用。
+
+![](./docs/readme/ac-save.png)
+
 
 ### 观看回放
 
 通过 `dino replay` 选择一局游戏记录回放。
 
+![](./docs/readme/ac-replay.gif)
+
+
 ### 竞技模式
 
 通过 `dino compete` 选择一局游戏记录，可以一边看回放一边跟玩。
+
+![](./docs/readme/ac-compete.gif)
+
+### 查看游戏数据
+
+使用 `dino dashboard` 命令查看得分和 token 消耗情况。
 
 ## 完整指令说明
 

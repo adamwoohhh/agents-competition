@@ -343,17 +343,6 @@ class Renderer:
         logo_width = max(len(line) for line in DINO_LOGO)
         dino_width = max(len(line) for line in dino)
         banner_width = dino_width + 4 + logo_width
-        dino_x = max(2, w // 2 - banner_width // 2)
-        logo_x = dino_x + dino_width + 4
-        for row, line in enumerate(DINO_LOGO):
-            self.safe_addstr(1 + row, logo_x, line, curses.A_BOLD | curses.color_pair(1))
-        for row, line in enumerate(dino):
-            self.safe_addstr(1 + row, dino_x, line, curses.A_BOLD | curses.color_pair(1))
-
-        ground_y = min(h - 3, 8)
-        pattern = "▁▁▁▁▂▁▁▁▂▁▁▁▁▁▂▁▁▁"
-        ground = (pattern * ((w // len(pattern)) + 2))[:max(0, w - 1)]
-        self.safe_addstr(ground_y, 0, ground, curses.color_pair(5) | curses.A_DIM)
 
         modes = []
         for window in summary:
@@ -361,43 +350,73 @@ class Renderer:
                 if mode not in modes:
                     modes.append(mode)
 
+        selected_mode = active_mode if active_mode in modes else (modes[0] if modes else None)
+        tabs = ""
+        rows = []
+        if modes:
+            tabs = "\t".join(
+                f"[{mode}]" if mode == selected_mode else mode
+                for mode in modes
+            )
+            range_width = max(12, *(len(str(window.get("label", ""))) for window in summary))
+            score_width = 6
+            token_width = 8
+            for window in summary:
+                label = str(window.get("label", ""))
+                totals = window.get("modes", {}).get(
+                    selected_mode,
+                    {"score": 0, "total_tokens": 0},
+                )
+                total_tokens = int(totals.get("total_tokens", 0) or 0)
+                line = f"{label:<{range_width}} | 累计得分 {int(totals.get('score', 0)):>{score_width}}"
+                if total_tokens > 0:
+                    line = (
+                        f"{line} | 累计消耗token "
+                        f"{format_compact_tokens(total_tokens):>{token_width}}"
+                    )
+                rows.append(line)
+
+        empty_text = "No completed games recorded yet."
+        block_width = max(
+            banner_width,
+            len(tabs),
+            *(len(row) for row in rows),
+            len(empty_text) if not modes else 0,
+        )
+        block_x = max(2, (w - block_width) // 2)
+        content_height = 11 + max(1, len(rows))
+        banner_y = max(1, (h - content_height) // 2)
+        banner_x = block_x + max(0, (block_width - banner_width) // 2)
+        dino_x = banner_x
+        logo_x = dino_x + dino_width + 4
+        for row, line in enumerate(DINO_LOGO):
+            self.safe_addstr(banner_y + row, logo_x, line, curses.A_BOLD | curses.color_pair(1))
+        for row, line in enumerate(dino):
+            self.safe_addstr(banner_y + row, dino_x, line, curses.A_BOLD | curses.color_pair(1))
+
+        ground_y = min(h - 3, banner_y + len(DINO_LOGO) + 1)
+        pattern = "▁▁▁▁▂▁▁▁▂▁▁▁▁▁▂▁▁▁"
+        ground = (pattern * ((w // len(pattern)) + 2))[:max(0, w - 1)]
+        self.safe_addstr(ground_y, 0, ground, curses.color_pair(5) | curses.A_DIM)
+
         content_y = ground_y + 2
         if not modes:
             self.safe_addstr(
                 content_y + 1,
-                2,
-                "No completed games recorded yet.",
+                block_x + max(0, (block_width - len(empty_text)) // 2),
+                empty_text,
                 curses.color_pair(6) | curses.A_DIM,
             )
             self.safe_addstr(h - 1, 2, "Q 退出", curses.A_DIM)
             self.scr.refresh()
             return
 
-        selected_mode = active_mode if active_mode in modes else modes[0]
-        tabs = "\t".join(
-            f"[{mode}]" if mode == selected_mode else mode
-            for mode in modes
-        )
-        self.safe_addstr(content_y, 2, tabs, curses.A_BOLD | curses.color_pair(3))
+        tabs_x = block_x + max(0, (block_width - len(tabs)) // 2)
+        self.safe_addstr(content_y, tabs_x, tabs, curses.A_BOLD | curses.color_pair(3))
 
         row_y = content_y + 2
-        range_width = max(12, *(len(str(window.get("label", ""))) for window in summary))
-        score_width = 6
-        token_width = 8
-        for window in summary:
-            label = str(window.get("label", ""))
-            totals = window.get("modes", {}).get(
-                selected_mode,
-                {"score": 0, "total_tokens": 0},
-            )
-            total_tokens = int(totals.get("total_tokens", 0) or 0)
-            line = f"{label:<{range_width}} | 累计得分 {int(totals.get('score', 0)):>{score_width}}"
-            if total_tokens > 0:
-                line = (
-                    f"{line} | 累计消耗token "
-                    f"{format_compact_tokens(total_tokens):>{token_width}}"
-                )
-            self.safe_addstr(row_y, 2, line, curses.color_pair(5))
+        for line in rows:
+            self.safe_addstr(row_y, block_x, line, curses.color_pair(5))
             row_y += 1
             if row_y >= h - 2:
                 break
