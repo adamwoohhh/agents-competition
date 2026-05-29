@@ -296,14 +296,25 @@ class DinoGame:
             "obstacles": nearest,
         }
 
-    def get_llm_state(self) -> dict:
+    def get_llm_state(self, window_frames: int = LLM_ACTION_WINDOW_FRAMES) -> dict:
         """导出 LLM 使用的更大前视窗口状态。"""
-        obstacles = self.obstacles + self.forecast_future_obstacles()
-        return self.get_state(
-            max_obstacle_distance=LLM_STATE_LOOKAHEAD,
+        forecast_complete_through_frame = (
+            self.frame + window_frames * 2 + FPS * 2
+        )
+        forecast_obstacles = self.forecast_future_obstacles(
+            through_frame=forecast_complete_through_frame,
+        )
+        obstacles = self.obstacles + forecast_obstacles
+        max_forecast_x = max(
+            [LLM_FORECAST_MAX_X, *(obstacle.x for obstacle in forecast_obstacles)],
+        )
+        state = self.get_state(
+            max_obstacle_distance=max_forecast_x - DINO_COL + 10,
             obstacles=obstacles,
             max_obstacle_count=None,
         )
+        state["forecast_complete_through_frame"] = forecast_complete_through_frame
+        return state
 
     def _clone_rng(self):
         if not hasattr(self.rng, "getstate") or not hasattr(self.rng, "setstate"):
@@ -314,7 +325,8 @@ class DinoGame:
 
     def forecast_future_obstacles(
             self,
-            max_x: float = LLM_FORECAST_MAX_X) -> list[Obstacle]:
+            max_x: float = LLM_FORECAST_MAX_X,
+            through_frame: int | None = None) -> list[Obstacle]:
         """Predict future obstacle spawns for LLM vision without mutating game state."""
         forecast_rng = self._clone_rng()
         if forecast_rng is None:
@@ -327,7 +339,9 @@ class DinoGame:
         travelled = 0.0
         max_travel = max(0.0, max_x - NORMAL_OBSTACLE_SPAWN_X)
 
-        while travelled <= max_travel:
+        while travelled <= max_travel or (
+                through_frame is not None
+                and self.frame + (score - self.score) <= through_frame):
             score += 1
             speed = min(MAX_SPEED, INITIAL_SPEED + score * SPEED_ACCELERATION)
             travelled += speed

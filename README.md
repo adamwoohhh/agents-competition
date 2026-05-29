@@ -97,7 +97,8 @@ python3 -m dino_game.cli compete run.json
 
 LLM 配置文件固定保存在 `~/.config/ai-dino-in-terminal/config.json`。
 配置包含 `llm_mode`，可选 `API` 或 `CODEX`。当 `llm_mode` 为 `API` 时，`api_key`、`base_url` 和 `model` 为必填；
-当 `llm_mode` 为 `CODEX` 时，会跳过这些 API 参数。
+当 `llm_mode` 为 `CODEX` 时，会跳过这些 API 参数，并要求本机 PATH 中能找到 Codex CLI。
+游戏运行时，`CODEX` 模式会通过 `codex exec --sandbox read-only --ephemeral --output-schema <schema>` 非交互调用本地 Codex。
 如果 `dino play --llm` 缺少必要配置，启动游戏前会提示补全；
 输入完成后会询问是否持久化到本地配置，默认 `N`，仅本次运行使用。
 

@@ -3,7 +3,7 @@ import types
 import unittest
 from unittest import mock
 
-from dino_game.llm_client import LLMClient
+from dino_game.llm_client import CodexLLMClient, LLMClient
 
 
 class LLMClientTest(unittest.TestCase):
@@ -50,3 +50,81 @@ class LLMClientTest(unittest.TestCase):
         self.assertEqual(response.raw_response, {"output_text": "jump"})
         self.assertEqual(response.response_text, "jump")
 
+    def test_codex_client_runs_codex_exec_and_reads_stdout(self):
+        completed = types.SimpleNamespace(
+            returncode=0,
+            stdout='{"start_frame": 10, "actions": ["jump"]}\n',
+            stderr="progress\n",
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "start_frame": {"type": "integer", "enum": [10]},
+                "actions": {"type": "array", "minItems": 1, "maxItems": 1},
+            },
+            "required": ["start_frame", "actions"],
+            "additionalProperties": False,
+        }
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["schema_path"] = command[6]
+            with open(command[6], "r", encoding="utf-8") as f:
+                captured["schema"] = json.load(f)
+            return completed
+
+        with mock.patch("subprocess.run", side_effect=fake_run) as run:
+            client = CodexLLMClient()
+            response = client.create_response(
+                prompt="plan",
+                text_format={
+                    "type": "json_schema",
+                    "name": "dino_action_window",
+                    "schema": schema,
+                },
+                extract_text=lambda result: result["stdout"],
+                timeout=9,
+            )
+
+        run.assert_called_once_with(
+            [
+                "codex",
+                "exec",
+                "--sandbox",
+                "read-only",
+                "--ephemeral",
+                "--output-schema",
+                mock.ANY,
+                "plan",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        schema_path = run.call_args.args[0][6]
+        self.assertEqual(captured.get("schema_path"), schema_path)
+        self.assertEqual(captured.get("schema"), schema)
+        self.assertEqual(response.response_text, '{"start_frame": 10, "actions": ["jump"]}')
+        self.assertEqual(response.raw_response["stdout"], '{"start_frame": 10, "actions": ["jump"]}\n')
+        self.assertEqual(response.raw_response["stderr"], "progress\n")
+        self.assertEqual(response.raw_response["returncode"], 0)
+
+    def test_codex_client_hides_stdout_on_nonzero_exit(self):
+        completed = types.SimpleNamespace(
+            returncode=1,
+            stdout='{"start_frame": 10, "actions": ["jump"]}\n',
+            stderr="failed\n",
+        )
+
+        with mock.patch("subprocess.run", return_value=completed):
+            client = CodexLLMClient()
+            response = client.create_response(
+                prompt="plan",
+                text_format={"type": "json_schema"},
+                extract_text=lambda result: result["stdout"],
+            )
+
+        self.assertEqual(response.response_text, "")
+        self.assertEqual(response.raw_response["stdout"], '{"start_frame": 10, "actions": ["jump"]}\n')
+        self.assertEqual(response.raw_response["returncode"], 1)
+        self.assertIn("error", response.raw_response)

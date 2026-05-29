@@ -3,17 +3,22 @@
 import json
 import math
 import os
+import shutil
 import threading
 from dataclasses import dataclass
 
 from .constants import *
 from .constants import _positive_int
 from .engine import DinoGame, obstacle_debug_snapshot
-from .llm_client import LLMClient
+from .llm_client import CodexLLMClient, LLMClient
+
+
+class LLMConfigError(RuntimeError):
+    """Raised when the selected LLM mode cannot be configured or run."""
 
 @dataclass(frozen=True)
 class LLMConfig:
-    """OpenAI-compatible LLM configuration."""
+    """LLM configuration for API or local Codex modes."""
 
     api_key: str = ""
     base_url: str = DEFAULT_OPENAI_BASE_URL
@@ -43,6 +48,23 @@ def normalize_llm_mode(value: str | None) -> str:
     if normalized in {"API", "CODEX"}:
         return normalized
     return "API"
+
+def codex_cli_path() -> str | None:
+    """Return the Codex CLI path if it is available on PATH."""
+    return shutil.which("codex")
+
+def ensure_codex_cli_available():
+    """Fail early when CODEX mode is selected but the Codex CLI is unavailable."""
+    if codex_cli_path() is None:
+        raise LLMConfigError(
+            "Codex CLI is not installed or not found in PATH. "
+            "Install Codex and retry CODEX mode."
+        )
+
+def validate_llm_config(config: LLMConfig):
+    """Validate mode-specific runtime requirements."""
+    if normalize_llm_mode(config.llm_mode) == "CODEX":
+        ensure_codex_cli_available()
 
 def config_file_path(home: str | None = None) -> str:
     """Return the fixed per-user config file path."""
@@ -192,6 +214,8 @@ def prompt_for_llm_config(
         input_func=input_func,
         output_func=output_func,
     )
+    if llm_mode == "CODEX":
+        ensure_codex_cli_available()
 
     if llm_mode == "API":
         api_key = input_func("API key: ").strip() or existing.api_key
@@ -285,6 +309,7 @@ def resolve_llm_config_for_run(
 
     config = load_llm_config(path)
     if config.is_complete():
+        validate_llm_config(config)
         return config
 
     config, persist = prompt_for_llm_config(
@@ -296,6 +321,7 @@ def resolve_llm_config_for_run(
     if persist:
         save_llm_config(config, path)
         output_func(f"Saved config to {path}")
+    validate_llm_config(config)
     return config
 
 def extract_response_text(result: dict) -> str:
@@ -321,6 +347,11 @@ def extract_response_text(result: dict) -> str:
             if isinstance(block, dict) and isinstance(block.get("text"), str):
                 parts.append(block["text"])
     return "\n".join(parts)
+
+def extract_codex_response_text(result: dict) -> str:
+    """Extract the final Codex CLI message from subprocess stdout."""
+    stdout = result.get("stdout")
+    return stdout if isinstance(stdout, str) else ""
 
 def action_from_llm_text(text: str) -> str:
     """Map model text to a game action."""
@@ -624,6 +655,7 @@ class ActionWindowPlanner:
 - 正在蹲下: {request_state['ducking']}
 - 游戏速度: {request_state['speed']}
 - 当前分数: {request_state['score']}
+- 障碍物预测完整覆盖到帧: {request_state.get('forecast_complete_through_frame', 'unknown')}
 - 前方障碍物: {json.dumps(request_state['obstacles'], ensure_ascii=False)}
 
 距离 distance 表示障碍物离恐龙的距离，越小越近。
@@ -677,7 +709,12 @@ class LLMAgent:
         self.plan_generation = 0
         self.lock = threading.Lock()    # 线程安全锁
         self.config = config or load_llm_config()
-        self.client = LLMClient(self.config)
+        validate_llm_config(self.config)
+        self.client = (
+            CodexLLMClient()
+            if normalize_llm_mode(self.config.llm_mode) == "CODEX"
+            else LLMClient(self.config)
+        )
         self.planner = ActionWindowPlanner()
         self.debug = debug
         self.debug_path = os.fspath(debug_path) if debug_path is not None else None
@@ -703,7 +740,7 @@ class LLMAgent:
             current_frame: int | None = None,
             window_frames: int = LLM_ACTION_WINDOW_FRAMES,
             generation: int | None = None):
-        """在后台线程中调用 OpenAI Responses API。"""
+        """在后台线程中调用配置的 LLM provider。"""
         if current_frame is None:
             current_frame = start_frame - 1
         try:
@@ -716,7 +753,11 @@ class LLMAgent:
             response = self.client.create_response(
                 prompt=prompt,
                 text_format=text_format,
-                extract_text=extract_response_text,
+                extract_text=(
+                    extract_codex_response_text
+                    if normalize_llm_mode(self.config.llm_mode) == "CODEX"
+                    else extract_response_text
+                ),
             )
             self._debug_log(
                 "llm_request",

@@ -1,8 +1,11 @@
-"""Transport wrapper for OpenAI-compatible Responses API calls."""
+"""Transport wrappers for API and local Codex LLM calls."""
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import tempfile
 import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
@@ -64,3 +67,65 @@ class LLMClient:
             request_payload=request_payload,
         )
 
+
+class CodexLLMClient:
+    """Local Codex CLI transport using non-interactive `codex exec`."""
+
+    def create_response(
+            self,
+            *,
+            prompt: str,
+            text_format: dict,
+            extract_text,
+            timeout: int = 60) -> LLMResponse:
+        schema = text_format.get("schema") if isinstance(text_format, dict) else None
+        schema_path = None
+        command = [
+            "codex",
+            "exec",
+            "--sandbox",
+            "read-only",
+            "--ephemeral",
+        ]
+        if isinstance(schema, dict):
+            with tempfile.NamedTemporaryFile(
+                    "w",
+                    encoding="utf-8",
+                    suffix=".json",
+                    delete=False) as schema_file:
+                json.dump(schema, schema_file)
+                schema_file.write("\n")
+                schema_path = schema_file.name
+            command.extend(["--output-schema", schema_path])
+        command.append(prompt)
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        finally:
+            if schema_path is not None:
+                try:
+                    os.remove(schema_path)
+                except FileNotFoundError:
+                    pass
+        raw_response = {
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "returncode": completed.returncode,
+        }
+        response_text = extract_text(raw_response).strip()
+        if completed.returncode != 0:
+            raw_response["error"] = f"codex exec exited with status {completed.returncode}"
+            response_text = ""
+        return LLMResponse(
+            raw_response=raw_response,
+            response_text=response_text,
+            request_payload={
+                "command": command[:-1] + ["<prompt>"],
+                "prompt": prompt,
+                "text_format": text_format,
+            },
+        )

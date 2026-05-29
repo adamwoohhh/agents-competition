@@ -9,6 +9,7 @@ from importlib import metadata
 from .constants import VERSION
 from .llm import (
     LLMConfig,
+    LLMConfigError,
     config_file_path,
     load_llm_config,
     render_llm_config,
@@ -98,7 +99,7 @@ def render_command_help(command: str) -> str:
         usage = "dino play [--auto|--llm] [--debug]"
         options = [
             "  --auto           Run with the local rule-based agent",
-            "  --llm            Run with the OpenAI LLM agent",
+            "  --llm            Run with the configured LLM agent",
             "  --debug          With --llm, write request and response JSON lines to logs/",
             "  Replay saving is offered after Game Over",
         ]
@@ -276,6 +277,8 @@ def cli():
                 run_config_setup()
             except KeyboardInterrupt:
                 print("Setup cancelled.")
+            except LLMConfigError as error:
+                print(str(error))
             return
         if cli_args.config_action == "reset":
             removed = reset_llm_config()
@@ -295,6 +298,9 @@ def cli():
             llm_config = resolve_llm_config_for_run()
         except KeyboardInterrupt:
             print("Setup cancelled.")
+            return
+        except LLMConfigError as error:
+            print(str(error))
             return
         cli_args = CliArgs(
             command=cli_args.command,

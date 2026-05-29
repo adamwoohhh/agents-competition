@@ -143,3 +143,17 @@ class CliContractTest(unittest.TestCase):
             dino_game.cli()
 
         self.assertEqual(messages, ["Setup cancelled."])
+
+    def test_config_error_exits_without_traceback(self):
+        dino_game = self.dino_game()
+        messages = []
+
+        with mock.patch("sys.argv", ["dino", "play", "--llm"]), \
+                mock.patch("builtins.print", messages.append), \
+                mock.patch(
+                    "dino_game.cli.resolve_llm_config_for_run",
+                    side_effect=dino_game.LLMConfigError("Codex CLI is not installed."),
+                ):
+            dino_game.cli()
+
+        self.assertEqual(messages, ["Codex CLI is not installed."])

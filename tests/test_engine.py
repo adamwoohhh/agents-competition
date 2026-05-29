@@ -71,13 +71,36 @@ class GameTuningTest(unittest.TestCase):
             llm_state["obstacles"][0]["x"],
             dino_game.NORMAL_OBSTACLE_SPAWN_X,
         )
-        self.assertLessEqual(
+        self.assertGreaterEqual(
             llm_state["obstacles"][-1]["x"],
             dino_game.LLM_FORECAST_MAX_X,
         )
         self.assertIn("spawn_frame", llm_state["obstacles"][0])
         self.assertNotIn("frame", llm_state["obstacles"][0])
         self.assertEqual(llm_state["obstacles"][0]["forecast"], True)
+        self.assertGreaterEqual(
+            llm_state["forecast_complete_through_frame"],
+            game.frame + dino_game.LLM_ACTION_WINDOW_FRAMES * 2 + dino_game.FPS * 2,
+        )
+
+    def test_llm_state_forecast_scales_with_requested_window_frames(self):
+        dino_game = importlib.import_module("dino_game")
+        game = dino_game.DinoGame(rng=dino_game.random.Random(123))
+
+        llm_state = game.get_llm_state(window_frames=900)
+
+        self.assertGreaterEqual(
+            llm_state["forecast_complete_through_frame"],
+            game.frame + 900 * 2 + dino_game.FPS * 2,
+        )
+        self.assertGreater(
+            max(obstacle["spawn_frame"] for obstacle in llm_state["obstacles"]),
+            dino_game.LLM_ACTION_WINDOW_FRAMES * 2,
+        )
+        self.assertGreater(
+            llm_state["obstacles"][-1]["x"],
+            dino_game.LLM_FORECAST_MAX_X,
+        )
 
     def test_rule_agent_waits_until_jump_window_after_speed_tuning(self):
         dino_game = importlib.import_module("dino_game")

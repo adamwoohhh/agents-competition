@@ -126,11 +126,12 @@ class LLMConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = pathlib.Path(temp_dir) / "config.json"
 
-            config = dino_game.run_config_setup(
-                config_path=config_path,
-                input_func=lambda prompt: next(answers),
-                output_func=messages.append,
-            )
+            with mock.patch("shutil.which", return_value="/usr/bin/codex"):
+                config = dino_game.run_config_setup(
+                    config_path=config_path,
+                    input_func=lambda prompt: next(answers),
+                    output_func=messages.append,
+                )
 
             self.assertEqual(config.llm_mode, "CODEX")
             self.assertEqual(config.api_key, "")
@@ -144,6 +145,43 @@ class LLMConfigTest(unittest.TestCase):
             self.assertEqual(stored["api_key"], "")
             self.assertEqual(stored["base_url"], "")
             self.assertEqual(stored["model"], "")
+
+    def test_setup_flow_rejects_codex_mode_without_codex_cli(self):
+        dino_game = self.dino_game()
+        answers = iter(["2"])
+        messages = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = pathlib.Path(temp_dir) / "config.json"
+
+            with mock.patch("shutil.which", return_value=None), \
+                    self.assertRaises(dino_game.LLMConfigError) as error:
+                dino_game.run_config_setup(
+                    config_path=config_path,
+                    input_func=lambda prompt: next(answers),
+                    output_func=messages.append,
+                )
+
+            self.assertIn("Codex CLI is not installed", str(error.exception))
+            self.assertFalse(config_path.exists())
+
+    def test_resolve_llm_config_rejects_saved_codex_mode_without_codex_cli(self):
+        dino_game = self.dino_game()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = pathlib.Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({
+                "llm_mode": "CODEX",
+                "llm_window_frames": 180,
+            }))
+
+            with mock.patch("shutil.which", return_value=None), \
+                    self.assertRaises(dino_game.LLMConfigError) as error:
+                dino_game.resolve_llm_config_for_run(
+                    config_path=config_path,
+                    input_func=lambda prompt: "",
+                    output_func=lambda message: None,
+                )
+
+            self.assertIn("Codex CLI is not installed", str(error.exception))
 
     def test_load_llm_config_defaults_missing_mode_to_api(self):
         dino_game = self.dino_game()
@@ -511,6 +549,7 @@ class LLMAgentOpenAITest(unittest.TestCase):
                     "ducking": False,
                     "speed": 2.04,
                     "score": 579,
+                    "forecast_complete_through_frame": 1260,
                     "obstacles": [{"kind": "cactus_group", "distance": 232.9}],
                 },
                 start_frame=601,
@@ -522,6 +561,7 @@ class LLMAgentOpenAITest(unittest.TestCase):
         self.assertIn("当前帧: 580", prompt)
         self.assertIn("需要返回的第一帧 start_frame: 601", prompt)
         self.assertIn("start_frame 距当前状态还有 21 帧", prompt)
+        self.assertIn("障碍物预测完整覆盖到帧: 1260", prompt)
         self.assertNotIn("当前帧: 600", prompt)
         self.assertIn("一次 jump 约持续 17 帧", prompt)
         self.assertIn("重复 jump 不会延长滞空", prompt)
@@ -602,6 +642,10 @@ class LLMAgentOpenAITest(unittest.TestCase):
             if obstacle.get("forecast") is True
         ))
         self.assertGreaterEqual(
+            state["forecast_complete_through_frame"],
+            game.frame + dino_game.LLM_ACTION_WINDOW_FRAMES * 2 + dino_game.FPS * 2,
+        )
+        self.assertGreaterEqual(
             dino_game.LLM_STATE_LOOKAHEAD,
             dino_game.MAX_SPEED * dino_game.LLM_ACTION_WINDOW_FRAMES,
         )
@@ -641,6 +685,49 @@ class LLMAgentOpenAITest(unittest.TestCase):
                 10 + dino_game.LLM_ACTION_WINDOW_FRAMES * 2 - 1,
             ),
         ])
+
+    def test_llm_agent_uses_codex_client_for_codex_mode(self):
+        dino_game = self.dino_game()
+        config = dino_game.LLMConfig(llm_mode="CODEX")
+
+        with mock.patch("shutil.which", return_value="/usr/bin/codex"):
+            agent = dino_game.LLMAgent(config)
+
+        self.assertEqual(agent.client.__class__.__name__, "CodexLLMClient")
+
+    def test_llm_agent_codex_mode_plans_from_codex_exec_stdout(self):
+        dino_game = self.dino_game()
+        config = dino_game.LLMConfig(llm_mode="CODEX")
+        completed = mock.Mock(
+            returncode=0,
+            stdout='{"start_frame": 10, "actions": ["jump", "none", "duck"]}',
+            stderr="",
+        )
+        state = {
+            "dino_y": 0.0,
+            "jumping": False,
+            "ducking": False,
+            "speed": 1.0,
+            "score": 0,
+            "obstacles": [{"kind": "cactus_group", "distance": 20}],
+        }
+
+        with mock.patch("shutil.which", return_value="/usr/bin/codex"), \
+                mock.patch("subprocess.run", return_value=completed) as run:
+            agent = dino_game.LLMAgent(config)
+            agent._call_llm(
+                state,
+                start_frame=10,
+                current_frame=9,
+                window_frames=3,
+            )
+
+        self.assertEqual(agent.planned_actions, {
+            10: "jump",
+            11: "none",
+            12: "duck",
+        })
+        self.assertEqual(run.call_args.args[0][:2], ["codex", "exec"])
 
     def test_llm_prefetches_next_window_immediately_after_previous_response(self):
         dino_game = self.dino_game()
