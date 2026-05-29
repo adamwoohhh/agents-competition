@@ -133,6 +133,29 @@ class PlaySession:
             return RuleAgent(), "Rule Agent"
         return None, ""
 
+    def _llm_usage_snapshot(self) -> dict | None:
+        if not isinstance(self.agent, LLMAgent):
+            return None
+        usage = self.agent.token_usage_snapshot()
+        if usage.get("total_tokens") is None:
+            return None
+        return usage
+
+    def _llm_draw_kwargs(self) -> dict:
+        usage = self._llm_usage_snapshot()
+        if not usage:
+            return {}
+        return {
+            "llm_usage_text": f"LLM tokens: {usage['total_tokens']:,}",
+        }
+
+    def _sync_llm_usage_to_recorder(self):
+        if not self.recorder or not hasattr(self.recorder, "set_llm_usage"):
+            return
+        usage = self._llm_usage_snapshot()
+        if usage:
+            self.recorder.set_llm_usage(usage)
+
     def run(self):
         try:
             while True:
@@ -147,6 +170,7 @@ class PlaySession:
                     continue
 
                 if self.pause_state.status != "running":
+                    self._sync_llm_usage_to_recorder()
                     self.renderer.draw(
                         self.game,
                         self.agent_name,
@@ -156,6 +180,7 @@ class PlaySession:
                             self.agent,
                             self.event_frame + 1,
                         ),
+                        **self._llm_draw_kwargs(),
                     )
                     continue
 
@@ -167,6 +192,7 @@ class PlaySession:
                     self.recorder.record_action(self.event_frame, action)
 
                 self._update_game(action)
+                self._sync_llm_usage_to_recorder()
                 self.renderer.draw(
                     self.game,
                     self.agent_name,
@@ -177,6 +203,7 @@ class PlaySession:
                     ),
                     game_over_save_status=self.game_over_save_status,
                     game_over_retry_available=self._game_over_retry_available(),
+                    **self._llm_draw_kwargs(),
                 )
         except KeyboardInterrupt:
             return
@@ -203,6 +230,7 @@ class PlaySession:
             return
 
         if key in (ord("s"), ord("S")) and self.recorder and self.game_over_save_status != "saved":
+            self._sync_llm_usage_to_recorder()
             finish_recording(self.recorder)
             self.game_over_save_status = "saved"
 
@@ -240,6 +268,8 @@ class PlaySession:
             draw_kwargs["game_over_retry_available"] = False
         elif self._game_over_retry_available():
             draw_kwargs["game_over_retry_available"] = True
+        self._sync_llm_usage_to_recorder()
+        draw_kwargs.update(self._llm_draw_kwargs())
         self.renderer.draw(self.game, self.agent_name, **draw_kwargs)
 
     def _next_action(self, key: int) -> str | None:
@@ -261,6 +291,7 @@ class PlaySession:
             state = self.game.get_llm_state()
             self.agent.ensure_plan(state, next_frame)
             if self.agent.needs_loading(next_frame):
+                self._sync_llm_usage_to_recorder()
                 self.renderer.draw(
                     self.game,
                     self.agent_name,
@@ -271,6 +302,7 @@ class PlaySession:
                     ),
                     game_over_save_status=None,
                     game_over_retry_available=False,
+                    **self._llm_draw_kwargs(),
                 )
                 return None
             self.event_frame = next_frame
@@ -368,6 +400,7 @@ class PlaySession:
                 self.event_frame, self.game = self.llm_lifeline_rewind_frames.pop(0)
                 self.game.game_over = False
             self.llm_lifeline_animation_frames_remaining = len(self.llm_lifeline_rewind_frames)
+            self._sync_llm_usage_to_recorder()
             self.renderer.draw(
                 self.game,
                 self.agent_name,
@@ -378,6 +411,7 @@ class PlaySession:
                 ),
                 game_over_save_status=None,
                 game_over_retry_available=False,
+                **self._llm_draw_kwargs(),
             )
             if not self.llm_lifeline_rewind_frames:
                 self.llm_lifeline_state = "loading"
@@ -387,6 +421,7 @@ class PlaySession:
             state = self.game.get_llm_state()
             self.agent.ensure_plan(state, next_frame)
             if self.agent.needs_loading(next_frame):
+                self._sync_llm_usage_to_recorder()
                 self.renderer.draw(
                     self.game,
                     self.agent_name,
@@ -397,6 +432,7 @@ class PlaySession:
                     ),
                     game_over_save_status=None,
                     game_over_retry_available=False,
+                    **self._llm_draw_kwargs(),
                 )
                 return True
             self.llm_lifeline_state = "idle"

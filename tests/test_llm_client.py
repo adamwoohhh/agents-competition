@@ -23,7 +23,14 @@ class LLMClientTest(unittest.TestCase):
                 return False
 
             def read(self):
-                return json.dumps({"output_text": "jump"}).encode()
+                return json.dumps({
+                    "output_text": "jump",
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 20,
+                        "total_tokens": 120,
+                    },
+                }).encode()
 
         def fake_urlopen(req, timeout):
             captured["url"] = req.full_url
@@ -47,14 +54,26 @@ class LLMClientTest(unittest.TestCase):
         self.assertEqual(captured["payload"]["input"], "plan")
         self.assertEqual(captured["payload"]["text"]["format"], {"type": "json_schema"})
         self.assertEqual(captured["timeout"], 7)
-        self.assertEqual(response.raw_response, {"output_text": "jump"})
+        self.assertEqual(response.raw_response, {
+            "output_text": "jump",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "total_tokens": 120,
+            },
+        })
         self.assertEqual(response.response_text, "jump")
+        self.assertEqual(response.token_usage, {
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+        })
 
     def test_codex_client_runs_codex_exec_and_reads_stdout(self):
         completed = types.SimpleNamespace(
             returncode=0,
             stdout='{"start_frame": 10, "actions": ["jump"]}\n',
-            stderr="progress\n",
+            stderr="progress\ntokens used\n7,470\n",
         )
         schema = {
             "type": "object",
@@ -106,8 +125,13 @@ class LLMClientTest(unittest.TestCase):
         self.assertEqual(captured.get("schema"), schema)
         self.assertEqual(response.response_text, '{"start_frame": 10, "actions": ["jump"]}')
         self.assertEqual(response.raw_response["stdout"], '{"start_frame": 10, "actions": ["jump"]}\n')
-        self.assertEqual(response.raw_response["stderr"], "progress\n")
+        self.assertEqual(response.raw_response["stderr"], "progress\ntokens used\n7,470\n")
         self.assertEqual(response.raw_response["returncode"], 0)
+        self.assertEqual(response.token_usage, {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": 7470,
+        })
 
     def test_codex_client_hides_stdout_on_nonzero_exit(self):
         completed = types.SimpleNamespace(

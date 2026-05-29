@@ -274,6 +274,7 @@ class Renderer:
             loading_text: str | None = None,
             cached_frames_text: str | None = None,
             cached_frames_view: CachedFrameWindow | None = None,
+            llm_usage_text: str | None = None,
             game_over_save_status: str | None = None,
             game_over_retry_available: bool = False):
         """绘制完整的一帧画面
@@ -391,10 +392,22 @@ class Renderer:
             self.draw_center_overlay([loading_text], color_pair=6)
 
         # ── 底部操作提示 ──
+        status_y = h - 2
         if cached_frames_view:
-            self.draw_cached_frame_window(h - 2, 2, cached_frames_view)
+            self.draw_cached_frame_window(
+                h - 3 if llm_usage_text else status_y,
+                2,
+                cached_frames_view,
+            )
         elif cached_frames_text:
-            self.safe_addstr(h - 2, 2, cached_frames_text, curses.color_pair(6) | curses.A_DIM)
+            self.safe_addstr(
+                h - 3 if llm_usage_text else status_y,
+                2,
+                cached_frames_text,
+                curses.color_pair(6) | curses.A_DIM,
+            )
+        if llm_usage_text:
+            self.safe_addstr(status_y, 2, llm_usage_text, curses.color_pair(6) | curses.A_DIM)
 
         hint = footer_hint(agent_name, game.speed)
         self.safe_addstr(h - 1, 2, hint, curses.A_DIM)

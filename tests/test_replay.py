@@ -67,6 +67,33 @@ class ReplayTest(unittest.TestCase):
             self.assertTrue(data["competitive"])
             self.assertEqual(data["source_replay"], "replays/source.json")
 
+    def test_replay_recorder_writes_llm_usage_snapshot(self):
+        dino_game = importlib.import_module("dino_game")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "run.json"
+            recorder = dino_game.ReplayRecorder(path, seed=123, mode="llm")
+            recorder.set_llm_usage({
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "total_tokens": 7470,
+                "events": [{
+                    "frame": 0,
+                    "start_frame": 1,
+                    "window_frames": 600,
+                    "provider": "codex",
+                    "prompt_tokens": None,
+                    "completion_tokens": None,
+                    "total_tokens": 7470,
+                }],
+            })
+
+            recorder.save()
+
+            data = dino_game.load_replay_file(path)
+            self.assertEqual(data["llm_usage"]["total_tokens"], 7470)
+            self.assertEqual(data["llm_usage"]["events"][0]["provider"], "codex")
+
     def test_replay_player_returns_recorded_mode_actions_and_obstacles_by_frame(self):
         dino_game = importlib.import_module("dino_game")
 

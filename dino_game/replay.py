@@ -282,6 +282,7 @@ class ReplayRecorder:
         self.source_replay = source_replay
         self.actions: list[dict] = []
         self.obstacles: list[dict] = []
+        self.llm_usage: dict | None = None
         self.frames = 0
         self.input_count = 0
         self.saved = False
@@ -308,6 +309,9 @@ class ReplayRecorder:
             "action": obstacle_to_action_data(obstacle),
         })
 
+    def set_llm_usage(self, usage: dict | None):
+        self.llm_usage = json.loads(json.dumps(usage)) if usage else None
+
     def save(self):
         if self.saved:
             return
@@ -319,6 +323,8 @@ class ReplayRecorder:
             "actions": self.actions,
             "obstacles": self.obstacles,
         }
+        if self.llm_usage:
+            data["llm_usage"] = self.llm_usage
         if self.competitive:
             data["competitive"] = True
             data["source_replay"] = self.source_replay

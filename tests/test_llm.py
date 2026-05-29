@@ -943,6 +943,11 @@ class LLMAgentOpenAITest(unittest.TestCase):
                             "start_frame": 3,
                             "actions": ["none", "jump"],
                         }),
+                        "usage": {
+                            "input_tokens": 11,
+                            "output_tokens": 7,
+                            "total_tokens": 18,
+                        },
                     }).encode()
 
             with mock.patch("urllib.request.urlopen", return_value=FakeResponse()):
@@ -969,6 +974,103 @@ class LLMAgentOpenAITest(unittest.TestCase):
         self.assertEqual(lines[1]["event"], "llm_response")
         self.assertEqual(lines[1]["planned_actions"], {"3": "none", "4": "jump"})
         self.assertIn("raw_response", lines[1])
+        self.assertEqual(lines[2]["event"], "llm_usage")
+        self.assertEqual(lines[2]["provider"], "api")
+        self.assertEqual(lines[2]["prompt_tokens"], 11)
+        self.assertEqual(lines[2]["completion_tokens"], 7)
+        self.assertEqual(lines[2]["total_tokens"], 18)
+
+    def test_llm_agent_accumulates_token_usage_events(self):
+        dino_game = self.dino_game()
+        config = dino_game.LLMConfig(
+            api_key="sk-test",
+            base_url="https://example.test/v1",
+            model="gpt-test",
+        )
+        agent = dino_game.LLMAgent(config)
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    "output_text": json.dumps({
+                        "start_frame": 3,
+                        "actions": ["none", "jump"],
+                    }),
+                    "usage": {
+                        "input_tokens": 13,
+                        "output_tokens": 5,
+                        "total_tokens": 18,
+                    },
+                }).encode()
+
+        with mock.patch("urllib.request.urlopen", return_value=FakeResponse()):
+            agent._call_llm(
+                {
+                    "dino_y": 0.0,
+                    "jumping": False,
+                    "ducking": False,
+                    "speed": 1.0,
+                    "score": 0,
+                    "obstacles": [{"kind": "cactus_group", "distance": 42}],
+                },
+                start_frame=3,
+                current_frame=2,
+                window_frames=2,
+            )
+
+        snapshot = agent.token_usage_snapshot()
+        self.assertEqual(snapshot["prompt_tokens"], 13)
+        self.assertEqual(snapshot["completion_tokens"], 5)
+        self.assertEqual(snapshot["total_tokens"], 18)
+        self.assertEqual(snapshot["events"], [{
+            "frame": 2,
+            "start_frame": 3,
+            "window_frames": 2,
+            "provider": "api",
+            "prompt_tokens": 13,
+            "completion_tokens": 5,
+            "total_tokens": 18,
+        }])
+
+    def test_llm_agent_accumulates_codex_token_usage_events(self):
+        dino_game = self.dino_game()
+        config = dino_game.LLMConfig(llm_mode="CODEX")
+        completed = mock.Mock(
+            returncode=0,
+            stdout='{"start_frame": 10, "actions": ["jump", "none"]}',
+            stderr="tokens used\n7,470\n",
+        )
+
+        with mock.patch("shutil.which", return_value="/usr/bin/codex"), \
+                mock.patch("subprocess.run", return_value=completed):
+            agent = dino_game.LLMAgent(config)
+            agent._call_llm(
+                {
+                    "dino_y": 0.0,
+                    "jumping": False,
+                    "ducking": False,
+                    "speed": 1.0,
+                    "score": 0,
+                    "obstacles": [{"kind": "cactus_group", "distance": 20}],
+                },
+                start_frame=10,
+                current_frame=9,
+                window_frames=2,
+            )
+
+        snapshot = agent.token_usage_snapshot()
+        self.assertEqual(snapshot["prompt_tokens"], None)
+        self.assertEqual(snapshot["completion_tokens"], None)
+        self.assertEqual(snapshot["total_tokens"], 7470)
+        self.assertEqual(snapshot["events"][0]["provider"], "codex")
+        self.assertEqual(snapshot["events"][0]["frame"], 9)
+        self.assertEqual(snapshot["events"][0]["total_tokens"], 7470)
 
     def test_llm_request_filters_obstacles_that_clear_before_start_frame(self):
         dino_game = self.dino_game()

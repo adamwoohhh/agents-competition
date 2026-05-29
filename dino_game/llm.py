@@ -706,6 +706,7 @@ class LLMAgent:
         self.requested_until_frame = 0
         self.request_in_flight = False
         self.requested_frame_ranges: list[tuple[int, int]] = []
+        self.token_usage_events: list[dict] = []
         self.plan_generation = 0
         self.lock = threading.Lock()    # 线程安全锁
         self.config = config or load_llm_config()
@@ -721,6 +722,13 @@ class LLMAgent:
         if not self.config.is_complete():
             raise ValueError("LLM config requires api_key, base_url, and model")
 
+    def _provider_name(self) -> str:
+        return (
+            "codex"
+            if normalize_llm_mode(self.config.llm_mode) == "CODEX"
+            else "api"
+        )
+
     def set_debug_path(self, debug_path: str | os.PathLike | None):
         self.debug_path = os.fspath(debug_path) if debug_path is not None else None
 
@@ -731,6 +739,49 @@ class LLMAgent:
         os.makedirs(os.path.dirname(self.debug_path), exist_ok=True)
         with open(self.debug_path, "a", encoding="utf-8") as f:
             print(json.dumps(payload, ensure_ascii=False), file=f, flush=True)
+
+    def _record_token_usage(
+            self,
+            usage: dict | None,
+            *,
+            start_frame: int,
+            current_frame: int,
+            window_frames: int):
+        if not usage:
+            return
+        event = {
+            "frame": current_frame,
+            "start_frame": start_frame,
+            "window_frames": window_frames,
+            "provider": self._provider_name(),
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+        }
+        with self.lock:
+            self.token_usage_events.append(event)
+        self._debug_log("llm_usage", **event)
+
+    def token_usage_snapshot(self) -> dict:
+        with self.lock:
+            events = [dict(event) for event in self.token_usage_events]
+
+        def sum_known(field: str) -> int | None:
+            values = [
+                event.get(field)
+                for event in events
+                if isinstance(event.get(field), int)
+            ]
+            if not values:
+                return None
+            return sum(values)
+
+        return {
+            "prompt_tokens": sum_known("prompt_tokens"),
+            "completion_tokens": sum_known("completion_tokens"),
+            "total_tokens": sum_known("total_tokens"),
+            "events": events,
+        }
 
     def _call_llm(
             self,
@@ -782,6 +833,12 @@ class LLMAgent:
                 raw_response=response.raw_response,
                 response_text=response.response_text,
                 planned_actions=planned,
+            )
+            self._record_token_usage(
+                getattr(response, "token_usage", None),
+                start_frame=start_frame,
+                current_frame=current_frame,
+                window_frames=window_frames,
             )
 
             with self.lock:
@@ -853,6 +910,7 @@ class LLMAgent:
             self.requested_until_frame = 0
             self.request_in_flight = False
             self.requested_frame_ranges.clear()
+            self.token_usage_events.clear()
 
     def discard_plan_after(self, frame: int):
         """Discard cached/requested LLM actions after frame so planning can restart."""

@@ -150,6 +150,29 @@ class SessionsTest(unittest.TestCase):
                 game_over_save_status="saved",
             )
 
+    def test_llm_session_syncs_token_usage_to_recorder_and_renderer(self):
+        renderer = mock.Mock()
+        config = dino_game.LLMConfig("key", "https://example.test/v1", "model")
+        session = sessions.AgentSession(
+            stdscr=mock.Mock(),
+            renderer=renderer,
+            cli_args=CliArgs(command="play", mode="llm", llm_config=config),
+        )
+        usage = {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "events": [],
+        }
+        session.agent.token_usage_snapshot = mock.Mock(return_value=usage)
+        session.recorder = mock.Mock()
+
+        draw_kwargs = session._llm_draw_kwargs()
+        session._sync_llm_usage_to_recorder()
+
+        session.recorder.set_llm_usage.assert_called_once_with(usage)
+        self.assertEqual(draw_kwargs["llm_usage_text"], "LLM tokens: 15")
+
     def test_session_loads_and_persists_mode_high_score(self):
         renderer = mock.Mock()
         with (

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import urllib.request
@@ -22,6 +23,48 @@ class LLMResponse:
     raw_response: dict
     response_text: str
     request_payload: dict
+    token_usage: dict | None = None
+
+
+def _int_or_none(value) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def token_usage_from_api_response(raw_response: dict) -> dict | None:
+    usage = raw_response.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    prompt_tokens = _int_or_none(
+        usage.get("input_tokens", usage.get("prompt_tokens")),
+    )
+    completion_tokens = _int_or_none(
+        usage.get("output_tokens", usage.get("completion_tokens")),
+    )
+    total_tokens = _int_or_none(usage.get("total_tokens"))
+    if prompt_tokens is None and completion_tokens is None and total_tokens is None:
+        return None
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def token_usage_from_codex_stderr(stderr: str | None) -> dict | None:
+    if not isinstance(stderr, str):
+        return None
+    match = re.search(r"tokens used\s*\n\s*([\d,]+)", stderr, re.IGNORECASE)
+    if not match:
+        return None
+    return {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": int(match.group(1).replace(",", "")),
+    }
 
 
 class LLMClient:
@@ -65,6 +108,7 @@ class LLMClient:
             raw_response=raw_response,
             response_text=extract_text(raw_response),
             request_payload=request_payload,
+            token_usage=token_usage_from_api_response(raw_response),
         )
 
 
@@ -128,4 +172,5 @@ class CodexLLMClient:
                 "prompt": prompt,
                 "text_format": text_format,
             },
+            token_usage=token_usage_from_codex_stderr(completed.stderr),
         )
