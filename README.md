@@ -1,4 +1,4 @@
-# DINO: 一款可以让 AI 玩的终端游戏
+# DINO RUNNER: 一款可以让 AI 玩的终端游戏
 
 ![](./docs/readme/ac-header.gif)
 
