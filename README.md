@@ -1,6 +1,6 @@
-![](./docs//readme//ac-playing-2.png)
+# DINO: 一个运行在终端里的像素游戏
 
-一个运行在终端里的像素游戏。当模型在干活儿的时候，你可以在终端里来一局恐龙快跑。
+![](./docs/readme/ac-playing-2.gif)
 
 ## 安装
 
