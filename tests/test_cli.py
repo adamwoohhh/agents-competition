@@ -20,7 +20,8 @@ class CliContractTest(unittest.TestCase):
         self.assertIn("Usage: dino <command> [options]", help_text)
         self.assertIn("Core", help_text)
         self.assertIn("play", help_text)
-        self.assertIn("Start a manual, auto, or LLM game", help_text)
+        self.assertIn("Start a manual or LLM game", help_text)
+        self.assertNotIn("auto", help_text.lower())
         self.assertIn("dashboard", help_text)
         self.assertIn("View score and token totals", help_text)
         self.assertIn("Replay", help_text)
@@ -55,8 +56,8 @@ class CliContractTest(unittest.TestCase):
         setup_help = dino_game.render_command_help("setup")
         dashboard_help = dino_game.render_command_help("dashboard")
 
-        self.assertIn("Usage: dino play [--auto|--llm [api|codex]] [--debug]", play_help)
-        self.assertIn("--auto", play_help)
+        self.assertIn("Usage: dino play [--llm [api|codex]] [--debug]", play_help)
+        self.assertNotIn("--auto", play_help)
         self.assertIn("--llm", play_help)
         self.assertIn("--debug", play_help)
         self.assertNotIn("--record", play_help)
@@ -124,6 +125,8 @@ class CliContractTest(unittest.TestCase):
         self.assertEqual(dino_game.parse_cli_args(["config", "-H"]).help_text, dino_game.render_command_help("config"))
         self.assertEqual(dino_game.parse_cli_args(["setup", "-H"]).help_text, dino_game.render_command_help("setup"))
         self.assertEqual(dino_game.parse_cli_args(["foo"]).help_text, dino_game.render_main_help())
+        self.assertEqual(dino_game.parse_cli_args(["help", "play"]).help_text, dino_game.render_command_help("play"))
+        self.assertEqual(dino_game.parse_cli_args(["help", "play", "extra"]).help_text, dino_game.render_main_help())
 
     def test_version_flags_return_project_version(self):
         dino_game = self.dino_game()

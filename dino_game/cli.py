@@ -38,7 +38,7 @@ class CliArgs:
 
 COMMAND_GROUPS = [
     ("Core", [
-        ("play", "Start a manual, auto, or LLM game"),
+        ("play", "Start a manual or LLM game"),
         ("dashboard", "View score and token totals"),
     ]),
     ("Replay", [
@@ -98,9 +98,8 @@ def render_main_help() -> str:
 def render_command_help(command: str) -> str:
     """渲染某个子命令的完整用法和参数。"""
     if command == "play":
-        usage = "dino play [--auto|--llm [api|codex]] [--debug]"
+        usage = "dino play [--llm [api|codex]] [--debug]"
         options = [
-            "  --auto           Run with the local rule-based agent",
             "  --llm [MODE]     Run with the LLM agent; MODE is api or codex",
             "  --debug          With --llm, write request and response JSON lines to logs/",
             "  Replay saving is offered after Game Over",
@@ -185,7 +184,7 @@ def parse_cli_args(args: list[str]) -> CliArgs:
     if args[0] in HELP_FLAGS:
         return CliArgs(show_help=True, help_text=render_main_help())
     if args[0] == "help":
-        if len(args) > 1 and args[1] in COMMAND_DESCRIPTIONS:
+        if len(args) == 2 and args[1] in COMMAND_DESCRIPTIONS:
             return CliArgs(show_help=True, help_text=render_command_help(args[1]))
         return CliArgs(show_help=True, help_text=render_main_help())
     if args[0] not in COMMAND_DESCRIPTIONS or args[0] == "help":
