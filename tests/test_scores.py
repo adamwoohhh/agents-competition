@@ -61,6 +61,7 @@ class ScoresTest(unittest.TestCase):
             {"created_at": now - 2 * 86_400.0, "mode": "manual", "score": 10, "total_tokens": 0},
             {"created_at": now - 6 * 86_400.0, "mode": "llm", "score": 20, "total_tokens": 1500},
             {"created_at": now - 20 * 86_400.0, "mode": "manual", "score": 30, "total_tokens": 0},
+            {"created_at": now - 25 * 86_400.0, "mode": "competitive", "score": 70, "total_tokens": 0},
             {"created_at": now - 80 * 86_400.0, "mode": "llm", "score": 40, "total_tokens": 2_000_000},
             {"created_at": now - 120 * 86_400.0, "mode": "agent", "score": 50, "total_tokens": 0},
         ]
@@ -68,14 +69,15 @@ class ScoresTest(unittest.TestCase):
 
         all_time = summary[-1]
         self.assertEqual(all_time["label"], "All time")
-        self.assertEqual(all_time["modes"]["manual"]["score"], 40)
+        self.assertEqual(all_time["modes"]["manual"]["score"], 110)
         self.assertEqual(all_time["modes"]["llm"]["total_tokens"], 2_001_500)
-        self.assertEqual(all_time["modes"]["agent"]["score"], 50)
+        self.assertNotIn("agent", all_time["modes"])
+        self.assertNotIn("competitive", all_time["modes"])
 
         last_90 = next(item for item in summary if item["label"] == "Last 90 days")
         self.assertNotIn("agent", last_90["modes"])
         self.assertEqual(last_90["modes"]["llm"]["score"], 60)
 
         last_30 = next(item for item in summary if item["label"] == "Last 30 days")
-        self.assertEqual(last_30["modes"]["manual"]["score"], 40)
+        self.assertEqual(last_30["modes"]["manual"]["score"], 110)
         self.assertEqual(last_30["modes"]["llm"]["score"], 20)

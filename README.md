@@ -88,6 +88,8 @@ dino play --llm api
 
 使用 `dino dashboard` 命令查看得分和 token 消耗情况。
 
+![](./docs/readme/ac-dashboard.png)
+
 ## 完整指令说明
 
 | 命令 | 说明 | 依赖 |
@@ -98,10 +100,10 @@ dino play --llm api
 | `dino play --llm codex` | 使用本地 Codex CLI 决策 | Codex CLI，且版本满足要求 |
 | `dino play --llm --debug` | 使用 LLM 决策并写 JSONL 调试日志 | `logs/*.jsonl` |
 | `dino dashboard` | 查看带动画 banner 的累计得分和 token dashboard | `~/.config/ai-dino-in-terminal/game_records.jsonl` |
-| `dino replay` | 从历史运行记录列表选择并重放 | `replays/*.json` |
-| `dino replay +list` | 浏览所有 replay 文件，回车查看元信息 | `replays/*.json` |
-| `dino replay +clear` | 清除所有 replay 记录文件 | `replays/*.json` |
-| `dino compete` | 从历史运行记录列表选择一局并进入双赛道竞技 | `replays/*.json` |
+| `dino replay` | 从历史运行记录列表选择并重放 | `~/.config/ai-dino-in-terminal/replays/*.json` |
+| `dino replay +list` | 浏览所有 replay 文件，回车查看元信息 | `~/.config/ai-dino-in-terminal/replays/*.json` |
+| `dino replay +clear` | 清除所有 replay 记录文件 | `~/.config/ai-dino-in-terminal/replays/*.json` |
+| `dino compete` | 从历史运行记录列表选择一局并进入双赛道竞技 | `~/.config/ai-dino-in-terminal/replays/*.json` |
 | `dino config` | 查看本地 LLM 配置（API key 脱敏显示） | 无 |
 | `dino config +setup` | 交互式写入本地 API LLM 配置 | API key / base_url / model |
 | `dino setup` | 交互式写入本地 API LLM 配置 | API key / base_url / model |
@@ -114,3 +116,13 @@ dino play --llm api
 - Python 3.11+
 - 支持 `curses` 的终端环境
 - 游戏本身无第三方运行时依赖
+
+## 本地文件写入
+
+| 数据类型 | 存放目录 |
+|---------|-------- |
+| 配置数据 | `~/.config/ai-dino-in-terminal/config.json` |
+| 游戏数据 （累计得分、token用量） | `~/.config/ai-dino-in-terminal/game_records.jsonl` |
+| 最高分记录 | `~/.config/ai-dino-in-terminal/scores.json` |
+| 回放数据 | `~/.config/ai-dino-in-terminal/replays/*.json` |
+| 运行日志（`--debug` 时打印） | 当前工作目录下的 `logs/*.jsonl` |

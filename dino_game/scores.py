@@ -140,6 +140,14 @@ def _today_start(now: float) -> float:
     ))
 
 
+def _dashboard_mode(mode: str) -> str | None:
+    if mode == "competitive":
+        return "manual"
+    if mode in ("manual", "llm"):
+        return mode
+    return None
+
+
 def aggregate_game_records(records: list[dict], now: float | None = None) -> list[dict]:
     current_time = time.time() if now is None else float(now)
     windows = [
@@ -156,7 +164,9 @@ def aggregate_game_records(records: list[dict], now: float | None = None) -> lis
             created_at = float(record["created_at"])
             if start is not None and created_at < start:
                 continue
-            mode = str(record["mode"])
+            mode = _dashboard_mode(str(record["mode"]))
+            if mode is None:
+                continue
             bucket = modes.setdefault(mode, {"score": 0, "total_tokens": 0})
             bucket["score"] += int(record["score"])
             bucket["total_tokens"] += int(record.get("total_tokens", 0) or 0)

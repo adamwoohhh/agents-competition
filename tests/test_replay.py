@@ -385,6 +385,20 @@ class ReplayTest(unittest.TestCase):
         self.assertIn("-manual-", pathlib.Path(path).name)
         self.assertTrue(path.endswith(".json"))
 
+    def test_default_replay_path_uses_config_replay_directory(self):
+        dino_game = importlib.import_module("dino_game")
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+                mock.patch("dino_game.constants.os.path.expanduser", return_value=tmpdir):
+            path = pathlib.Path(dino_game.default_replay_path("manual", seed=123456))
+
+        self.assertEqual(
+            path.parent,
+            pathlib.Path(tmpdir) / ".config" / "ai-dino-in-terminal" / "replays",
+        )
+        self.assertIn("-manual-", path.name)
+        self.assertTrue(path.name.endswith(".json"))
+
     def test_explicit_record_path_adds_run_suffix_after_first_game(self):
         dino_game = importlib.import_module("dino_game")
 

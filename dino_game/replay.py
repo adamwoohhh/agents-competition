@@ -11,8 +11,8 @@ from .constants import (
     INITIAL_SPEED,
     MAX_SPEED,
     NORMAL_OBSTACLE_SPAWN_X,
-    REPLAY_DIR,
     SPEED_ACCELERATION,
+    replay_dir_path,
 )
 from .engine import (
     DinoGame,
@@ -27,20 +27,24 @@ def load_replay_file(path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def default_replay_path(mode: str, seed: int | None = None, directory: str = REPLAY_DIR) -> str:
+def default_replay_path(
+        mode: str,
+        seed: int | None = None,
+        directory: str | os.PathLike | None = None) -> str:
     """生成默认运行记录文件路径。"""
     if seed is None:
         seed = time.time_ns()
+    replay_directory = os.fspath(directory or replay_dir_path())
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     suffix = str(seed)[-6:]
-    return os.path.join(directory, f"{timestamp}-{mode}-{suffix}.json")
+    return os.path.join(replay_directory, f"{timestamp}-{mode}-{suffix}.json")
 
 def record_path_for_run(
         record_path: str | None,
         mode: str,
         seed: int,
         run_index: int,
-        directory: str = REPLAY_DIR) -> str:
+        directory: str | os.PathLike | None = None) -> str:
     """返回某一局要写入的 replay 文件路径。"""
     if not record_path:
         return default_replay_path(mode, seed, directory)
@@ -55,18 +59,19 @@ def debug_log_path_for_replay(replay_path: str | os.PathLike, directory: str = "
     root, _ext = os.path.splitext(basename)
     return os.path.join(directory, f"{root}.jsonl")
 
-def list_replay_files(directory: str = REPLAY_DIR) -> list[str]:
+def list_replay_files(directory: str | os.PathLike | None = None) -> list[str]:
     """列出 replay JSON 文件，按最近修改时间倒序。"""
-    if not os.path.isdir(directory):
+    replay_directory = os.fspath(directory or replay_dir_path())
+    if not os.path.isdir(replay_directory):
         return []
     paths = [
-        os.path.join(directory, name)
-        for name in os.listdir(directory)
-        if name.endswith(".json") and os.path.isfile(os.path.join(directory, name))
+        os.path.join(replay_directory, name)
+        for name in os.listdir(replay_directory)
+        if name.endswith(".json") and os.path.isfile(os.path.join(replay_directory, name))
     ]
     return sorted(paths, key=lambda path: os.path.getmtime(path), reverse=True)
 
-def clear_replay_files(directory: str = REPLAY_DIR) -> int:
+def clear_replay_files(directory: str | os.PathLike | None = None) -> int:
     """删除 replay 目录下的所有 JSON 记录文件，返回删除数量。"""
     removed = 0
     for path in list_replay_files(directory):
@@ -135,7 +140,7 @@ def select_replay_file(stdscr, paths: list[str]) -> str | None:
             pass
 
         if not paths:
-            msg = f"没有找到运行记录目录 {REPLAY_DIR}/ 下的 .json 文件"
+            msg = f"没有找到运行记录目录 {replay_dir_path()}/ 下的 .json 文件"
             hint = "按 Enter / Q 返回"
             for y, text in ((3, msg), (5, hint)):
                 try:
@@ -229,7 +234,7 @@ def browse_replay_files(stdscr, paths: list[str]):
             pass
 
         if not paths:
-            msg = f"没有找到运行记录目录 {REPLAY_DIR}/ 下的 .json 文件"
+            msg = f"没有找到运行记录目录 {replay_dir_path()}/ 下的 .json 文件"
             hint = "按 Enter / Q 返回"
             for y, text in ((3, msg), (5, hint)):
                 try:
@@ -638,7 +643,7 @@ def start_recording_run(
         mode: str,
         record_path: str | None,
         run_index: int,
-        directory: str = REPLAY_DIR,
+        directory: str | os.PathLike | None = None,
         seed: int | None = None,
         obstacle_spawn_x: float = NORMAL_OBSTACLE_SPAWN_X) -> tuple[DinoGame, ReplayRecorder]:
     """启动一局新游戏，并为这一局创建独立 replay recorder。"""

@@ -114,7 +114,15 @@ CELESTIAL_Y = 2
 
 SPEED_DROP_MULTIPLIER = 3.0
 
-REPLAY_DIR = "replays"
+REPLAY_DIR_NAME = "replays"
+
+
+def replay_dir_path(home: str | None = None) -> str:
+    home_dir = home if home is not None else os.path.expanduser("~")
+    return os.path.join(home_dir, ".config", CONFIG_DIR_NAME, REPLAY_DIR_NAME)
+
+
+REPLAY_DIR = replay_dir_path()
 
 VERSION = "0.1.0"
 
